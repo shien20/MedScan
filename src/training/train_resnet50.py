@@ -1,4 +1,5 @@
 import os
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -118,6 +119,9 @@ num_epochs = 10
 
 best_val_acc = 0.0
 
+# Initialize metrics list to track training progress
+metrics = []
+
 
 # =====================================
 # TRAINING LOOP
@@ -201,6 +205,17 @@ for epoch in range(num_epochs):
 
     print(f"Validation Accuracy: {val_acc:.2f}%")
 
+    # =========================
+    # SAVE METRICS FOR THIS EPOCH
+    # =========================
+
+    metrics.append({
+        'epoch': epoch + 1,
+        'train_loss': train_loss,
+        'train_accuracy': train_acc,
+        'val_accuracy': val_acc
+    })
+
 
     # =========================
     # SAVE BEST MODEL
@@ -221,3 +236,18 @@ for epoch in range(num_epochs):
 
 
 print("\nTraining Complete.")
+
+# =====================================
+# SAVE TRAINING METRICS
+# =====================================
+
+# Convert metrics list to DataFrame
+metrics_df = pd.DataFrame(metrics)
+
+# Save to CSV
+metrics_csv_path = os.path.join(ROOT_DIR, "outputs/logs/training_metrics.csv")
+metrics_df.to_csv(metrics_csv_path, index=False)
+
+print(f"\nTraining metrics saved to: {metrics_csv_path}")
+print("\nMetrics Summary:")
+print(metrics_df)

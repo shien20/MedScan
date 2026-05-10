@@ -2,6 +2,7 @@
 # Ignore dataset folders
 data/
 Images/
+venv/
 
 # Ignore processed data
 *.csv
