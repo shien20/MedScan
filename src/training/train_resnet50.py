@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,6 +10,17 @@ from tqdm import tqdm
 
 from src.datasets.chest_xray_dataset import ChestXrayDataset
 from src.datasets.transform import train_transform, val_transform
+
+# =====================================
+# GET PROJECT ROOT DIRECTORY
+# =====================================
+
+ROOT_DIR = os.getcwd()
+
+# Create output directories if they don't exist
+os.makedirs(os.path.join(ROOT_DIR, "outputs/models"), exist_ok=True)
+os.makedirs(os.path.join(ROOT_DIR, "outputs/logs"), exist_ok=True)
+os.makedirs(os.path.join(ROOT_DIR, "outputs/confusion_matrix"), exist_ok=True)
 
 
 # =====================================
@@ -24,15 +36,19 @@ print(f"Using device: {device}")
 # DATASETS
 # =====================================
 
+train_csv_path = os.path.join(ROOT_DIR, "data/processed/all_data/train.csv")
+val_csv_path = os.path.join(ROOT_DIR, "data/processed/all_data/val.csv")
+images_dir_path = os.path.join(ROOT_DIR, "data/processed/all_data/Images")
+
 train_dataset = ChestXrayDataset(
-    csv_file="C:\\Users\\shien\\OneDrive - Sunway Education Group\\Sunway materials\\Capstone Project 2\\MedScan\\data\\processed\\all_data\\train.csv",
-    image_dir="C:\\Users\\shien\\OneDrive - Sunway Education Group\\Sunway materials\\Capstone Project 2\\MedScan\\data\\processed\\all_data\\Images",
+    csv_file=train_csv_path,
+    image_dir=images_dir_path,
     transform=train_transform
 )
 
 val_dataset = ChestXrayDataset(
-    csv_file="C:\\Users\\shien\\OneDrive - Sunway Education Group\\Sunway materials\\Capstone Project 2\\MedScan\\data\\processed\\all_data\\val.csv",
-    image_dir="C:\\Users\\shien\\OneDrive - Sunway Education Group\\Sunway materials\\Capstone Project 2\\MedScan\\data\\processed\\all_data\\Images",
+    csv_file=val_csv_path,
+    image_dir=images_dir_path,
     transform=val_transform
 )
 
@@ -194,9 +210,11 @@ for epoch in range(num_epochs):
 
         best_val_acc = val_acc
 
+        model_save_path = os.path.join(ROOT_DIR, "outputs/models/best_resnet50.pth")
+        
         torch.save(
             model.state_dict(),
-            "outputs/models/best_resnet50.pth"
+            model_save_path
         )
 
         print("Best model saved.")
