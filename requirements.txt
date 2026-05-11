@@ -1,3 +1,5 @@
+--extra-index-url https://download.pytorch.org/whl/cu128
+
 torch
 torchvision
 pandas
@@ -5,3 +7,7 @@ Pillow
 tqdm
 matplotlib
 numpy
+
+KGAT_9516ac99d5ee069240c4beeb5ae70157
+
+export KAGGLE_API_TOKEN=KGAT_9516ac99d5ee069240c4beeb5ae70157

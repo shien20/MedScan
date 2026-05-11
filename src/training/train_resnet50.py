@@ -41,6 +41,14 @@ train_csv_path = os.path.join(ROOT_DIR, "data/processed/all_data/train.csv")
 val_csv_path = os.path.join(ROOT_DIR, "data/processed/all_data/val.csv")
 images_dir_path = os.path.join(ROOT_DIR, "data/processed/all_data/Images")
 
+# Debug: Print paths
+print(f"\nProject root: {ROOT_DIR}")
+print(f"Train CSV path: {train_csv_path}")
+print(f"Val CSV path: {val_csv_path}")
+print(f"Images dir path: {images_dir_path}")
+print(f"Train CSV exists: {os.path.exists(train_csv_path)}")
+print(f"Images dir exists: {os.path.exists(images_dir_path)}\n")
+
 train_dataset = ChestXrayDataset(
     csv_file=train_csv_path,
     image_dir=images_dir_path,
