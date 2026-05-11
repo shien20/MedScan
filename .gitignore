@@ -5,7 +5,6 @@ Images/
 venv/
 
 # Ignore processed data
-*.csv
 *.png
 *.jpg
 
