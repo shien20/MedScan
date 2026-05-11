@@ -1,3 +1,5 @@
+--extra-index-url https://download.pytorch.org/whl/cu128
+
 torch
 torchvision
 pandas
@@ -5,3 +7,4 @@ Pillow
 tqdm
 matplotlib
 numpy
+kagglehub
