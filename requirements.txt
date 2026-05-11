@@ -7,4 +7,3 @@ Pillow
 tqdm
 matplotlib
 numpy
-kagglehub
