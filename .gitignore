@@ -7,7 +7,7 @@ venv/
 # Ignore processed data
 *.png
 *.jpg
-
+*.pth
 
 # Ignore Python cache
 __pycache__/
