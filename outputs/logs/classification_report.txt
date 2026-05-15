@@ -1,0 +1,35 @@
+============================================================
+EVALUATION RESULTS
+============================================================
+
+Test Accuracy: 98.96%
+
+--- Recall per Class ---
+Normal: 99.55%
+Pneumonia: 98.22%
+COVID-19: 98.07%
+Tuberculosis: 97.52%
+
+--- F1-Score per Class ---
+Normal: 99.20%
+Pneumonia: 98.92%
+COVID-19: 98.47%
+Tuberculosis: 97.52%
+
+--- Classification Report ---
+              precision    recall  f1-score   support
+
+      Normal     0.9885    0.9955    0.9920      1557
+   Pneumonia     0.9964    0.9822    0.9892       562
+    COVID-19     0.9889    0.9807    0.9847       362
+Tuberculosis     0.9752    0.9752    0.9752       121
+
+    accuracy                         0.9896      2602
+   macro avg     0.9872    0.9834    0.9853      2602
+weighted avg     0.9896    0.9896    0.9896      2602
+
+--- Confusion Matrix ---
+[[1550    1    3    3]
+ [  10  552    0    0]
+ [   6    1  355    0]
+ [   2    0    1  118]]

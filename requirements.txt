@@ -7,3 +7,5 @@ Pillow
 tqdm
 matplotlib
 numpy
+seaborn
+scikit-learn

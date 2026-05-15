@@ -81,19 +81,20 @@ val_loader = DataLoader(
 
 
 # =====================================
-# LOAD PRETRAINED RESNET50
+# LOAD PRETRAINED EFFICIENTNET-B0
 # =====================================
 
-model = models.resnet50(weights="IMAGENET1K_V1")
+model = models.efficientnet_b0(weights="IMAGENET1K_V1")
 
 
 # =====================================
-# REPLACE FINAL LAYER (matches proposal)
+# REPLACE FINAL LAYER
 # =====================================
 
-num_features = model.fc.in_features  # 2048 for ResNet50
+num_features = model.classifier[1].in_features  # 1280 for EfficientNet-B0
 
-model.fc = nn.Sequential(
+model.classifier = nn.Sequential(
+    nn.Dropout(p=0.2, inplace=True),
     nn.Linear(num_features, 1024),
     nn.BatchNorm1d(1024),
     nn.ReLU(),
@@ -143,9 +144,9 @@ print("\n" + "="*60)
 print("STAGE 1: Training Classification Head (Backbone Frozen)")
 print("="*60)
 
-# Freeze backbone layers (everything except fc)
+# Freeze backbone layers (everything except classifier)
 for name, param in model.named_parameters():
-    if "fc" not in name:
+    if "classifier" not in name:
         param.requires_grad = False
 
 # Create optimizer for Stage 1 (only trainable parameters)
@@ -263,7 +264,7 @@ for epoch in range(STAGE_1_EPOCHS):
         best_epoch = global_epoch
         best_stage = "Stage 1"
 
-        model_save_path = os.path.join(ROOT_DIR, "outputs/models/best_resnet50.pth")
+        model_save_path = os.path.join(ROOT_DIR, "outputs/models/best_efficientnet_b0.pth")
         
         torch.save(
             model.state_dict(),
@@ -281,9 +282,9 @@ print("\n" + "="*60)
 print("STAGE 2: Fine-tuning Top Layers + Head")
 print("="*60)
 
-# Unfreeze layer3, layer4, and fc
+# Unfreeze top blocks and classifier
 for name, param in model.named_parameters():
-    if "layer3" in name or "layer4" in name or "fc" in name:
+    if "blocks.6" in name or "blocks.7" in name or "blocks.8" in name or "classifier" in name:
         param.requires_grad = True
 
 # Create optimizer for Stage 2 (all trainable parameters now)
@@ -399,7 +400,7 @@ for epoch in range(STAGE_2_EPOCHS):
         best_epoch = global_epoch
         best_stage = "Stage 2"
 
-        model_save_path = os.path.join(ROOT_DIR, "outputs/models/best_resnet50.pth")
+        model_save_path = os.path.join(ROOT_DIR, "outputs/models/best_efficientnet_b0.pth")
         
         torch.save(
             model.state_dict(),
@@ -425,7 +426,7 @@ print(f"  Stage: {best_stage}")
 metrics_df = pd.DataFrame(metrics)
 
 # Save to CSV
-metrics_csv_path = os.path.join(ROOT_DIR, "outputs/logs/training_metrics.csv")
+metrics_csv_path = os.path.join(ROOT_DIR, "outputs/logs/training_metrics_efficientnet_b0.csv")
 metrics_df.to_csv(metrics_csv_path, index=False)
 
 print(f"\nTraining metrics saved to: {metrics_csv_path}")
