@@ -1,4 +1,5 @@
 import os
+import sys
 import torch
 import torch.nn as nn
 import pandas as pd
@@ -16,26 +17,37 @@ from src.datasets.transform import val_transform
 
 
 # =====================================
-# GET PROJECT ROOT DIRECTORY
+# CONFIGURATION
 # =====================================
+
+# Usage: python evaluate_single.py MODEL_NAME MODEL_TYPE
+# Example: python evaluate_single.py resnet50 baseline
+# Example: python evaluate_single.py densenet121 finetuned
+
+if len(sys.argv) < 3:
+    print("Usage: python evaluate_single.py <model_name> <model_type>")
+    print("  model_name: resnet50, densenet121, efficientnet_b0, mobilenetv2")
+    print("  model_type: baseline, finetuned")
+    sys.exit(1)
+
+MODEL_NAME = sys.argv[1].lower()  # e.g., "resnet50", "densenet121"
+MODEL_TYPE = sys.argv[2].lower()  # e.g., "baseline", "finetuned"
+
+# Validate
+if MODEL_TYPE not in ["baseline", "finetuned"]:
+    print(f"ERROR: model_type must be 'baseline' or 'finetuned', got '{MODEL_TYPE}'")
+    sys.exit(1)
+
+if MODEL_NAME not in ["resnet50", "densenet121", "efficientnet_b0", "mobilenetv2"]:
+    print(f"ERROR: model_name must be one of: resnet50, densenet121, efficientnet_b0, mobilenetv2")
+    sys.exit(1)
 
 ROOT_DIR = os.getcwd()
-
-print(f"Project root: {ROOT_DIR}")
-
-
-# =====================================
-# DEVICE CONFIGURATION
-# =====================================
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+print(f"Project root: {ROOT_DIR}")
 print(f"Using device: {device}")
-
-
-# =====================================
-# CREATE OUTPUT DIRECTORIES
-# =====================================
+print(f"Evaluating: {MODEL_NAME} ({MODEL_TYPE})")
 
 os.makedirs(os.path.join(ROOT_DIR, "outputs/confusion_matrix"), exist_ok=True)
 os.makedirs(os.path.join(ROOT_DIR, "outputs/logs"), exist_ok=True)
@@ -48,53 +60,95 @@ os.makedirs(os.path.join(ROOT_DIR, "outputs/logs"), exist_ok=True)
 test_csv_path = os.path.join(ROOT_DIR, "data/processed/all_data/test.csv")
 images_dir_path = os.path.join(ROOT_DIR, "data/processed/all_data/Images")
 
-print(f"\nLoading test data from: {test_csv_path}")
-
-test_dataset = ChestXrayDataset(
-    csv_file=test_csv_path,
-    image_dir=images_dir_path,
-    transform=val_transform
-)
-
-test_loader = DataLoader(
-    test_dataset,
-    batch_size=16,
-    shuffle=False
-)
+test_dataset = ChestXrayDataset(csv_file=test_csv_path, image_dir=images_dir_path, transform=val_transform)
+test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
 
 print(f"Test dataset size: {len(test_dataset)}")
 
 
 # =====================================
-# LOAD TRAINED MODEL
+# CREATE MODEL ARCHITECTURE
 # =====================================
 
-model = models.resnet50(weights="IMAGENET1K_V1")
+if MODEL_NAME == "resnet50":
+    model = models.resnet50(weights="IMAGENET1K_V1")
+    if MODEL_TYPE == "baseline":
+        model.fc = nn.Linear(model.fc.in_features, 4)
+    else:  # finetuned
+        num_features = model.fc.in_features
+        model.fc = nn.Sequential(
+            nn.Linear(num_features, 1024),
+            nn.BatchNorm1d(1024),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(1024, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(512, 4)
+        )
 
-num_features = model.fc.in_features
+elif MODEL_NAME == "densenet121":
+    model = models.densenet121(weights="IMAGENET1K_V1")
+    if MODEL_TYPE == "baseline":
+        model.classifier = nn.Linear(model.classifier.in_features, 4)
+    else:  # finetuned
+        in_feat = model.classifier.in_features
+        model.classifier = nn.Sequential(
+            nn.Linear(in_feat, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(512, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(256, 4)
+        )
 
-model.fc = nn.Sequential(
-    nn.Linear(num_features, 1024),
-    nn.BatchNorm1d(1024),
-    nn.ReLU(),
-    nn.Dropout(0.5),
-    nn.Linear(1024, 512),
-    nn.BatchNorm1d(512),
-    nn.ReLU(),
-    nn.Dropout(0.5),
-    nn.Linear(512, 4)
-)
+elif MODEL_NAME == "efficientnet_b0":
+    model = models.efficientnet_b0(weights="IMAGENET1K_V1")
+    if MODEL_TYPE == "baseline":
+        model.classifier[1] = nn.Linear(model.classifier[1].in_features, 4)
+    else:  # finetuned
+        in_feat = model.classifier[1].in_features
+        model.classifier[1] = nn.Sequential(
+            nn.Linear(in_feat, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(512, 4)
+        )
 
-model_path = os.path.join(ROOT_DIR, "outputs/models/best_resnet50.pth")
+elif MODEL_NAME == "mobilenetv2":
+    model = models.mobilenet_v2(weights="IMAGENET1K_V1")
+    if MODEL_TYPE == "baseline":
+        model.classifier[1] = nn.Linear(model.classifier[1].in_features, 4)
+    else:  # finetuned
+        in_feat = model.classifier[1].in_features
+        model.classifier[1] = nn.Sequential(
+            nn.Linear(in_feat, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(512, 4)
+        )
 
-print(f"\nLoading model from: {model_path}")
+
+# =====================================
+# LOAD TRAINED MODEL WEIGHTS
+# =====================================
+
+model_path = os.path.join(ROOT_DIR, f"outputs/models/best_{MODEL_NAME}.pth")
+
+print(f"Loading model from: {model_path}")
 
 if os.path.exists(model_path):
     model.load_state_dict(torch.load(model_path, map_location=device))
-    print("Model loaded successfully!")
+    print("✓ Model loaded successfully!")
 else:
     print(f"ERROR: Model file not found at {model_path}")
-    exit()
+    sys.exit(1)
 
 model = model.to(device)
 model.eval()
@@ -207,10 +261,10 @@ plt.ylabel('Actual', fontsize=12)
 plt.xlabel('Predicted', fontsize=12)
 plt.tight_layout()
 
-# Save Confusion Matrix
-cm_save_path = os.path.join(ROOT_DIR, "outputs/confusion_matrix/confusion_matrix.png")
+# Save Confusion Matrix with proper naming
+cm_save_path = os.path.join(ROOT_DIR, f"outputs/confusion_matrix/confusion_matrix_{MODEL_NAME}_{MODEL_TYPE}.png")
 plt.savefig(cm_save_path, dpi=300, bbox_inches='tight')
-print(f"\nConfusion Matrix saved to: {cm_save_path}")
+print(f"\n✓ Confusion Matrix saved to: {cm_save_path}")
 plt.close()
 
 
@@ -255,16 +309,16 @@ evaluation_results = {
 }
 
 eval_df = pd.DataFrame(evaluation_results)
-eval_csv_path = os.path.join(ROOT_DIR, "outputs/logs/evaluation_results.csv")
+eval_csv_path = os.path.join(ROOT_DIR, f"outputs/logs/evaluation_results_{MODEL_NAME}_{MODEL_TYPE}.csv")
 eval_df.to_csv(eval_csv_path, index=False)
 
-print(f"\nEvaluation results saved to: {eval_csv_path}")
+print(f"\n✓ Evaluation results saved to: {eval_csv_path}")
 
-# Save detailed classification report to text file
-report_txt_path = os.path.join(ROOT_DIR, "outputs/logs/classification_report.txt")
+# Save detailed classification report to text file with proper naming
+report_txt_path = os.path.join(ROOT_DIR, f"outputs/logs/classification_report_{MODEL_NAME}_{MODEL_TYPE}.txt")
 with open(report_txt_path, 'w') as f:
     f.write("="*60 + "\n")
-    f.write("EVALUATION RESULTS\n")
+    f.write(f"EVALUATION RESULTS - {MODEL_NAME.upper()} ({MODEL_TYPE.upper()})\n")
     f.write("="*60 + "\n\n")
     f.write(f"Test Accuracy: {test_accuracy*100:.2f}%\n\n")
     f.write("--- Recall per Class ---\n")
@@ -283,7 +337,7 @@ with open(report_txt_path, 'w') as f:
     f.write("\n--- Confusion Matrix ---\n")
     f.write(str(cm))
 
-print(f"Classification report saved to: {report_txt_path}")
+print(f"✓ Classification report saved to: {report_txt_path}")
 
 
 # =====================================
@@ -291,10 +345,12 @@ print(f"Classification report saved to: {report_txt_path}")
 # =====================================
 
 print("\n" + "="*60)
-print("EVALUATION COMPLETE")
+print(f"✓ EVALUATION COMPLETE - {MODEL_NAME.upper()} ({MODEL_TYPE.upper()})")
 print("="*60)
 print(f"\nGenerated outputs:")
-print(f"  - Confusion Matrix: {cm_save_path}")
-print(f"  - Evaluation Results: {eval_csv_path}")
-print(f"  - Classification Report: {report_txt_path}")
-print("\nUse these results for your thesis!")
+print(f"  - Confusion Matrix: confusion_matrix_{MODEL_NAME}_{MODEL_TYPE}.png")
+print(f"  - Evaluation Results: evaluation_results_{MODEL_NAME}_{MODEL_TYPE}.csv")
+print(f"  - Classification Report: classification_report_{MODEL_NAME}_{MODEL_TYPE}.txt")
+print(f"\nAll files saved to:")
+print(f"  - {os.path.join(ROOT_DIR, 'outputs/confusion_matrix/')}")
+print(f"  - {os.path.join(ROOT_DIR, 'outputs/logs/')}")

@@ -81,17 +81,17 @@ val_loader = DataLoader(
 
 
 # =====================================
-# LOAD PRETRAINED EFFICIENTNET-B0
+# LOAD PRETRAINED MOBILENETV2
 # =====================================
 
-model = models.efficientnet_b0(weights="IMAGENET1K_V1")
+model = models.mobilenet_v2(weights="IMAGENET1K_V1")
 
 
 # =====================================
 # REPLACE FINAL LAYER
 # =====================================
 
-num_features = model.classifier[1].in_features  # 1280 for EfficientNet-B0
+num_features = model.classifier[1].in_features  # 1280 for MobileNetV2
 
 model.classifier = nn.Sequential(
     nn.Dropout(p=0.2, inplace=True),
@@ -265,7 +265,7 @@ for epoch in range(STAGE_1_EPOCHS):
         best_epoch = global_epoch
         best_stage = "Stage 1"
 
-        model_save_path = os.path.join(ROOT_DIR, "outputs/models/best_efficientnet_b0.pth")
+        model_save_path = os.path.join(ROOT_DIR, "outputs/models/mobilenetv2_finetuned_best.pth")
         
         torch.save(
             model.state_dict(),
@@ -283,9 +283,9 @@ print("\n" + "="*60)
 print("STAGE 2: Fine-tuning Top Layers + Head")
 print("="*60)
 
-# Unfreeze top blocks and classifier
+# Unfreeze top inverted residual blocks and classifier
 for name, param in model.named_parameters():
-    if "blocks.6" in name or "blocks.7" in name or "blocks.8" in name or "classifier" in name:
+    if "features.15" in name or "features.16" in name or "features.17" in name or "features.18" in name or "classifier" in name:
         param.requires_grad = True
 
 # Create optimizer for Stage 2 (all trainable parameters now)
@@ -402,7 +402,7 @@ for epoch in range(STAGE_2_EPOCHS):
         best_epoch = global_epoch
         best_stage = "Stage 2"
 
-        model_save_path = os.path.join(ROOT_DIR, "outputs/models/best_efficientnet_b0.pth")
+        model_save_path = os.path.join(ROOT_DIR, "outputs/models/mobilenetv2_finetuned_best.pth")
         
         torch.save(
             model.state_dict(),
@@ -428,7 +428,7 @@ print(f"  Stage: {best_stage}")
 metrics_df = pd.DataFrame(metrics)
 
 # Save to CSV
-metrics_csv_path = os.path.join(ROOT_DIR, "outputs/logs/training_metrics_efficientnet_b0.csv")
+metrics_csv_path = os.path.join(ROOT_DIR, "outputs/logs/mobilenetv2_finetuned_metrics.csv")
 metrics_df.to_csv(metrics_csv_path, index=False)
 
 print(f"\nTraining metrics saved to: {metrics_csv_path}")

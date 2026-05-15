@@ -18,10 +18,10 @@ ENSEMBLE_TYPE = "heavy"   # "heavy" or "light"
 
 ROOT_DIR = os.getcwd()
 
-RESNET_PATH      = os.path.join(ROOT_DIR, "outputs/models/best_resnet50.pth")
-DENSENET_PATH    = os.path.join(ROOT_DIR, "outputs/models/best_densenet121.pth")
-EFFICIENTNET_PATH = os.path.join(ROOT_DIR, "outputs/models/best_efficientnet.pth")
-MOBILENET_PATH   = os.path.join(ROOT_DIR, "outputs/models/best_mobilenet.pth")
+RESNET_PATH      = os.path.join(ROOT_DIR, "outputs/models/resnet50_baseline_best.pth")
+DENSENET_PATH    = os.path.join(ROOT_DIR, "outputs/models/densenet121_baseline_best.pth")
+EFFICIENTNET_PATH = os.path.join(ROOT_DIR, "outputs/models/efficientnet_b0_baseline_best.pth")
+MOBILENET_PATH   = os.path.join(ROOT_DIR, "outputs/models/mobilenetv2_baseline_best.pth")
 
 STAGE1_EPOCHS = 5     # frozen backbone, train head only
 STAGE2_EPOCHS = 15    # unfreeze top layers, fine-tune everything

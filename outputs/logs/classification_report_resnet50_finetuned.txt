@@ -1,0 +1,43 @@
+============================================================
+EVALUATION RESULTS - RESNET50 (FINETUNED)
+============================================================
+
+Test Accuracy: 99.54%
+
+--- Recall per Class ---
+Normal: 99.74%
+Pneumonia: 99.29%
+COVID-19: 99.45%
+Tuberculosis: 98.35%
+
+--- F1-Score per Class ---
+Normal: 99.62%
+Pneumonia: 99.64%
+COVID-19: 99.31%
+Tuberculosis: 98.76%
+
+--- AUC-ROC Scores ---
+Macro AUC-ROC: 0.9999
+Per-Class AUC-ROC:
+Normal: 0.9998
+Pneumonia: 1.0000
+COVID-19: 0.9999
+Tuberculosis: 1.0000
+
+--- Classification Report ---
+              precision    recall  f1-score   support
+
+      Normal     0.9949    0.9974    0.9962      1557
+   Pneumonia     1.0000    0.9929    0.9964       562
+    COVID-19     0.9917    0.9945    0.9931       362
+Tuberculosis     0.9917    0.9835    0.9876       121
+
+    accuracy                         0.9954      2602
+   macro avg     0.9946    0.9921    0.9933      2602
+weighted avg     0.9954    0.9954    0.9954      2602
+
+--- Confusion Matrix ---
+[[1553    0    3    1]
+ [   4  558    0    0]
+ [   2    0  360    0]
+ [   2    0    0  119]]

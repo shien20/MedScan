@@ -427,7 +427,7 @@ print(f"  Stage: {best_stage}")
 metrics_df = pd.DataFrame(metrics)
 
 # Save to CSV
-metrics_csv_path = os.path.join(ROOT_DIR, "outputs/logs/training_metrics.csv")
+metrics_csv_path = os.path.join(ROOT_DIR, "outputs/logs/resnet50_finetuned_metrics.csv")
 metrics_df.to_csv(metrics_csv_path, index=False)
 
 print(f"\nTraining metrics saved to: {metrics_csv_path}")
