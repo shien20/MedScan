@@ -205,6 +205,7 @@ for epoch in range(STAGE_1_EPOCHS):
         train_correct += (predicted == labels).sum().item()
 
     train_acc = 100 * train_correct / train_total
+    train_loss /= len(train_loader)  # Average loss per batch
 
     print(f"Train Loss: {train_loss:.4f}")
     print(f"Train Accuracy: {train_acc:.2f}%")
@@ -341,6 +342,7 @@ for epoch in range(STAGE_2_EPOCHS):
         train_correct += (predicted == labels).sum().item()
 
     train_acc = 100 * train_correct / train_total
+    train_loss /= len(train_loader)  # Average loss per batch
 
     print(f"Train Loss: {train_loss:.4f}")
     print(f"Train Accuracy: {train_acc:.2f}%")

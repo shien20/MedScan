@@ -111,6 +111,7 @@ def run_epoch(model, loader, optimizer=None, is_train=True):
             correct += (predicted == labels).sum().item()
 
     acc = 100 * correct / total
+    total_loss /= len(loader)  # Average loss per batch
     return total_loss, acc
 
 
