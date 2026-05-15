@@ -3,6 +3,7 @@
 data/
 Images/
 venv/
+outputs/models/
 
 # Ignore processed data
 *.png
@@ -12,3 +13,4 @@ venv/
 # Ignore Python cache
 __pycache__/
 *.pyc
+*.pth
