@@ -35,7 +35,13 @@ val_dataset   = ChestXrayDataset(val_csv_path,   images_dir_path, val_transform)
 # =====================================
 
 def make_weighted_sampler(dataset):
-    labels = dataset.df["label"].values
+    label_map = {
+        "Normal": 0,
+        "Pneumonia": 1,
+        "COVID-19": 2,
+        "Tuberculosis": 3
+    }
+    labels = dataset.df["classification"].map(label_map).values
     class_counts = torch.bincount(torch.tensor(labels, dtype=torch.long))
     class_weights = 1.0 / class_counts.float()
     sample_weights = class_weights[labels]

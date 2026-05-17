@@ -69,7 +69,13 @@ val_dataset = ChestXrayDataset(
 # =====================================
 
 # Calculate class weights based on training set
-train_labels = train_dataset.labels
+label_map = {
+    "Normal": 0,
+    "Pneumonia": 1,
+    "COVID-19": 2,
+    "Tuberculosis": 3
+}
+train_labels = train_dataset.df["classification"].map(label_map).values
 class_counts = torch.bincount(torch.tensor(train_labels, dtype=torch.long))
 class_weights = 1.0 / class_counts.float()
 class_weights = class_weights / class_weights.sum() * len(class_counts)
