@@ -31,31 +31,13 @@ train_dataset = ChestXrayDataset(train_csv_path, images_dir_path, train_transfor
 val_dataset   = ChestXrayDataset(val_csv_path,   images_dir_path, val_transform)
 
 # =====================================
-# WEIGHTED SAMPLER (class imbalance)
+# DATALOADERS (Stage 1: natural distribution, no weighting)
 # =====================================
-
-def make_weighted_sampler(dataset):
-    label_map = {
-        "Normal": 0,
-        "Pneumonia": 1,
-        "COVID-19": 2,
-        "Tuberculosis": 3
-    }
-    labels = dataset.df["classification"].map(label_map).values
-    class_counts = torch.bincount(torch.tensor(labels, dtype=torch.long))
-    class_weights = 1.0 / class_counts.float()
-    sample_weights = class_weights[labels]
-    return WeightedRandomSampler(
-        weights=sample_weights,
-        num_samples=len(sample_weights),
-        replacement=True
-    )
 
 train_loader = DataLoader(
     train_dataset,
     batch_size=16,
-    sampler=make_weighted_sampler(train_dataset),
-    shuffle=False
+    shuffle=True  # Stage 1: use natural class distribution
 )
 
 val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False)
@@ -68,37 +50,37 @@ model = models.efficientnet_b0(weights="IMAGENET1K_V1")
 
 num_features = model.classifier[1].in_features  # 1280
 
-# Fix 1: Remove the redundant first Dropout
+# Stronger classifier head for medical imaging (more capacity)
 model.classifier = nn.Sequential(
-    nn.Linear(num_features, 1024),
+    nn.Linear(num_features, 2048),
+    nn.BatchNorm1d(2048),
+    nn.ReLU(),
+    nn.Dropout(0.4),
+    nn.Linear(2048, 1024),
     nn.BatchNorm1d(1024),
     nn.ReLU(),
-    nn.Dropout(0.5),
+    nn.Dropout(0.4),
     nn.Linear(1024, 512),
     nn.BatchNorm1d(512),
     nn.ReLU(),
-    nn.Dropout(0.5),
+    nn.Dropout(0.3),
     nn.Linear(512, 4)
 )
 
 model = model.to(device)
 
-# Fix 2: Weighted loss + reduced label smoothing
-train_counts = torch.tensor([12460, 4494, 2893, 969], dtype=torch.float)
-class_weights = train_counts.sum() / (4 * train_counts)
-class_weights = (class_weights / class_weights.sum() * 4).to(device)
-
-criterion = nn.CrossEntropyLoss(
-    weight=class_weights,
-    label_smoothing=0.05    # reduced from 0.1
-)
-
 # =====================================
-# TRAINING SETTINGS
+# LOSS FUNCTION (standard, no class weighting for Stage 1)
 # =====================================
 
-STAGE_1_EPOCHS = 5
-STAGE_2_EPOCHS = 10
+criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
+
+# =====================================
+# TRAINING SETTINGS (Architecture-specific for lightweight EfficientNet-B0)
+# =====================================
+
+STAGE_1_EPOCHS = 8  # Longer Stage 1 to stabilize stronger head (was 5)
+STAGE_2_EPOCHS = 10  # Progressive fine-tuning
 best_val_acc = 0.0
 best_epoch = 0
 best_stage = ""
@@ -178,18 +160,21 @@ for epoch in range(STAGE_1_EPOCHS):
         print("✓ Best model saved.")
 
 # =====================================
-# STAGE 2: Unfreeze top layers, fine-tune
+# STAGE 2: PROGRESSIVE UNFREEZING (last 2 blocks + head)
 # =====================================
 
 print("\n" + "="*60)
-print("STAGE 2: Fine-tuning Top Layers + Head")
+print("STAGE 2: Progressive Fine-tuning (Last 2 Blocks + Head)")
 print("="*60)
 
-# Fix 4: Correct EfficientNet layer names
+# Progressive unfreeze: only last 2 blocks for lightweight model
+# (more conservative than unfreezing blocks 6-8)
 for name, param in model.named_parameters():
-    if ("features.6" in name or "features.7" in name or
-            "features.8" in name or "classifier" in name):
+    if ("features.7" in name or "features.8" in name or
+            "classifier" in name):
         param.requires_grad = True
+    else:
+        param.requires_grad = False
 
 optimizer = optim.Adam(
     filter(lambda p: p.requires_grad, model.parameters()),

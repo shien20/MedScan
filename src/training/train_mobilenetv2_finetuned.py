@@ -65,37 +65,13 @@ val_dataset = ChestXrayDataset(
 
 
 # =====================================
-# WEIGHTED SAMPLER FOR CLASS BALANCE
-# =====================================
-
-# Calculate class weights based on training set
-label_map = {
-    "Normal": 0,
-    "Pneumonia": 1,
-    "COVID-19": 2,
-    "Tuberculosis": 3
-}
-train_labels = train_dataset.df["classification"].map(label_map).values
-class_counts = torch.bincount(torch.tensor(train_labels, dtype=torch.long))
-class_weights = 1.0 / class_counts.float()
-class_weights = class_weights / class_weights.sum() * len(class_counts)
-
-sample_weights = class_weights[torch.tensor(train_labels, dtype=torch.long)]
-weighted_sampler = WeightedRandomSampler(
-    weights=sample_weights,
-    num_samples=len(sample_weights),
-    replacement=True
-)
-
-
-# =====================================
-# DATALOADERS
+# DATALOADERS (Stage 1: natural distribution, no weighting)
 # =====================================
 
 train_loader = DataLoader(
     train_dataset,
     batch_size=16,
-    sampler=weighted_sampler
+    shuffle=True  # Stage 1: use natural class distribution
 )
 
 val_loader = DataLoader(
@@ -118,15 +94,20 @@ model = models.mobilenet_v2(weights="IMAGENET1K_V1")
 
 num_features = model.classifier[1].in_features  # 1280 for MobileNetV2
 
+# Stronger classifier head for medical imaging (more capacity)
 model.classifier = nn.Sequential(
-    nn.Linear(num_features, 1024),
+    nn.Linear(num_features, 2048),
+    nn.BatchNorm1d(2048),
+    nn.ReLU(),
+    nn.Dropout(0.4),
+    nn.Linear(2048, 1024),
     nn.BatchNorm1d(1024),
     nn.ReLU(),
-    nn.Dropout(0.5),
+    nn.Dropout(0.4),
     nn.Linear(1024, 512),
     nn.BatchNorm1d(512),
     nn.ReLU(),
-    nn.Dropout(0.5),
+    nn.Dropout(0.3),
     nn.Linear(512, 4)
 )
 
@@ -139,24 +120,18 @@ model = model.to(device)
 
 
 # =====================================
-# LOSS FUNCTION (with class weights & reduced label smoothing)
+# LOSS FUNCTION (standard, no class weighting for Stage 1)
 # =====================================
 
-# Map class_weights to device
-class_weights_tensor = class_weights.to(device)
-
-criterion = nn.CrossEntropyLoss(
-    weight=class_weights_tensor,
-    label_smoothing=0.05
-)
+criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
 
 
 # =====================================
-# TRAINING SETTINGS
+# TRAINING SETTINGS (Architecture-specific for lightweight MobileNetV2)
 # =====================================
 
-STAGE_1_EPOCHS = 5  # Freeze backbone, train head only
-STAGE_2_EPOCHS = 10  # Fine-tune top layers + head
+STAGE_1_EPOCHS = 8  # Longer Stage 1 to stabilize stronger head (was 5)
+STAGE_2_EPOCHS = 10  # Progressive fine-tuning
 
 best_val_acc = 0.0
 best_epoch = 0
@@ -306,17 +281,20 @@ for epoch in range(STAGE_1_EPOCHS):
 
 
 # =====================================
-# STAGE 2: UNFREEZE TOP LAYERS, FINE-TUNE (10 epochs)
+# STAGE 2: PROGRESSIVE UNFREEZING (last 2 blocks + head)
 # =====================================
 
 print("\n" + "="*60)
-print("STAGE 2: Fine-tuning Top Layers + Head")
+print("STAGE 2: Progressive Fine-tuning (Last 2 Blocks + Head)")
 print("="*60)
 
-# Unfreeze top inverted residual blocks and classifier
+# Progressive unfreeze: only last 2 blocks for lightweight model
+# (more conservative than unfreezing blocks 15-18)
 for name, param in model.named_parameters():
-    if "features.15" in name or "features.16" in name or "features.17" in name or "features.18" in name or "classifier" in name:
+    if "features.17" in name or "features.18" in name or "classifier" in name:
         param.requires_grad = True
+    else:
+        param.requires_grad = False
 
 # Create optimizer for Stage 2 (all trainable parameters now)
 optimizer = optim.Adam(
