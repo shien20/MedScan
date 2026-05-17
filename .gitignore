@@ -3,7 +3,7 @@
 data/
 Images/
 venv/
-outputs
+outputs/
 
 # Ignore processed data
 *.png
