@@ -112,8 +112,13 @@ elif MODEL_NAME == "efficientnet_b0":
         model.classifier[1] = nn.Linear(model.classifier[1].in_features, 4)
     else:  # finetuned
         in_feat = model.classifier[1].in_features
-        model.classifier[1] = nn.Sequential(
-            nn.Linear(in_feat, 512),
+        model.classifier = nn.Sequential(
+            nn.Dropout(p=0.2, inplace=True),
+            nn.Linear(in_feat, 1024),
+            nn.BatchNorm1d(1024),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(1024, 512),
             nn.BatchNorm1d(512),
             nn.ReLU(),
             nn.Dropout(0.5),
@@ -126,8 +131,13 @@ elif MODEL_NAME == "mobilenetv2":
         model.classifier[1] = nn.Linear(model.classifier[1].in_features, 4)
     else:  # finetuned
         in_feat = model.classifier[1].in_features
-        model.classifier[1] = nn.Sequential(
-            nn.Linear(in_feat, 512),
+        model.classifier = nn.Sequential(
+            nn.Dropout(p=0.2, inplace=True),
+            nn.Linear(in_feat, 1024),
+            nn.BatchNorm1d(1024),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(1024, 512),
             nn.BatchNorm1d(512),
             nn.ReLU(),
             nn.Dropout(0.5),
@@ -139,7 +149,11 @@ elif MODEL_NAME == "mobilenetv2":
 # LOAD TRAINED MODEL WEIGHTS
 # =====================================
 
-model_path = os.path.join(ROOT_DIR, f"outputs/models/best_{MODEL_NAME}.pth")
+# Construct model path based on model type
+if MODEL_TYPE == "baseline":
+    model_path = os.path.join(ROOT_DIR, f"outputs/models/baseline_{MODEL_NAME}.pth")
+else:  # finetuned
+    model_path = os.path.join(ROOT_DIR, f"outputs/models/best_{MODEL_NAME}.pth")
 
 print(f"Loading model from: {model_path}")
 

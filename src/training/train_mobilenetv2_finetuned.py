@@ -9,6 +9,7 @@ from torchvision import models
 from torch.utils.data import DataLoader
 
 from tqdm import tqdm
+from torch.utils.data import WeightedRandomSampler
 
 from src.datasets.chest_xray_dataset import ChestXrayDataset
 from src.datasets.transform import train_transform, val_transform
@@ -64,13 +65,31 @@ val_dataset = ChestXrayDataset(
 
 
 # =====================================
+# WEIGHTED SAMPLER FOR CLASS BALANCE
+# =====================================
+
+# Calculate class weights based on training set
+train_labels = train_dataset.labels
+class_counts = torch.bincount(torch.tensor(train_labels, dtype=torch.long))
+class_weights = 1.0 / class_counts.float()
+class_weights = class_weights / class_weights.sum() * len(class_counts)
+
+sample_weights = class_weights[torch.tensor(train_labels, dtype=torch.long)]
+weighted_sampler = WeightedRandomSampler(
+    weights=sample_weights,
+    num_samples=len(sample_weights),
+    replacement=True
+)
+
+
+# =====================================
 # DATALOADERS
 # =====================================
 
 train_loader = DataLoader(
     train_dataset,
     batch_size=16,
-    shuffle=True
+    sampler=weighted_sampler
 )
 
 val_loader = DataLoader(
@@ -94,7 +113,6 @@ model = models.mobilenet_v2(weights="IMAGENET1K_V1")
 num_features = model.classifier[1].in_features  # 1280 for MobileNetV2
 
 model.classifier = nn.Sequential(
-    nn.Dropout(p=0.2, inplace=True),
     nn.Linear(num_features, 1024),
     nn.BatchNorm1d(1024),
     nn.ReLU(),
@@ -115,10 +133,16 @@ model = model.to(device)
 
 
 # =====================================
-# LOSS FUNCTION (with label smoothing)
+# LOSS FUNCTION (with class weights & reduced label smoothing)
 # =====================================
 
-criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+# Map class_weights to device
+class_weights_tensor = class_weights.to(device)
+
+criterion = nn.CrossEntropyLoss(
+    weight=class_weights_tensor,
+    label_smoothing=0.05
+)
 
 
 # =====================================
@@ -152,7 +176,7 @@ for name, param in model.named_parameters():
 # Create optimizer for Stage 1 (only trainable parameters)
 optimizer = optim.Adam(
     filter(lambda p: p.requires_grad, model.parameters()),
-    lr=1e-3  # Higher learning rate for stage 1
+    lr=3e-4  # Reduced from 1e-3 to prevent head instability
 )
 
 # Learning rate scheduler for Stage 1
