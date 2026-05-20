@@ -377,7 +377,7 @@ print(f"✓ Standard confusion matrix saved to: {cm_save_path}")
 plt.close()
 
 # Plot Large Text Confusion Matrix (with 48pt font like in improved_confusion_matrices.ipynb)
-cm_large_title = f'Confusion Matrix - {MODEL_NAME.upper()} ({MODEL_TYPE.upper()})\nEnhanced Readability - Large Text'
+cm_large_title = f'{MODEL_NAME} ({MODEL_TYPE.capitalize()})'
 cm_large_filename = f'confusion_matrix_{MODEL_NAME}_{MODEL_TYPE}_LARGE.png'
 plot_large_confusion_matrix(cm, cm_large_title, cm_large_filename, os.path.join(ROOT_DIR, "outputs/confusion_matrix"), class_names)
 
