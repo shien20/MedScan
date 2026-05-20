@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import confusion_matrix, classification_report, accuracy_score, recall_score, f1_score, roc_auc_score
+from sklearn.metrics import confusion_matrix, classification_report, accuracy_score, recall_score, f1_score, roc_auc_score, precision_score
 from sklearn.preprocessing import label_binarize
 from torch.nn.functional import softmax
 from torchvision import models
@@ -14,6 +14,77 @@ from torch.utils.data import DataLoader
 
 from src.datasets.chest_xray_dataset import ChestXrayDataset
 from src.datasets.transform import val_transform
+
+
+# =====================================
+# UTILITY FUNCTION: LARGE TEXT CONFUSION MATRIX
+# =====================================
+
+def plot_large_confusion_matrix(cm, title, filename, output_path, class_names=['Normal', 'Pneumonia', 'COVID-19', 'Tuberculosis']):
+    """
+    Plot confusion matrix with ULTRA-MASSIVE text for maximum readability.
+    Based on improved_confusion_matrices.ipynb visualization settings.
+    
+    Parameters:
+    - cm: confusion matrix (numpy array)
+    - title: plot title
+    - filename: output filename
+    - output_path: directory to save the figure
+    - class_names: list of class names
+    """
+    # Create ULTRA-MASSIVE figure (28x26 inches)
+    fig, ax = plt.subplots(figsize=(28, 26))
+    
+    # Create heatmap with seaborn (WITHOUT default annotations)
+    sns.heatmap(
+        cm,
+        annot=False,
+        fmt='d',
+        cmap='YlOrRd',
+        xticklabels=class_names,
+        yticklabels=class_names,
+        cbar_kws={'label': 'Count', 'shrink': 0.8},
+        ax=ax,
+        cbar=True,
+        square=True,
+        linewidths=4,
+        linecolor='black'
+    )
+    
+    # MANUALLY add ULTRA-GIANT text annotations (48pt)
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            # Determine text color (white on dark background, black on light)
+            text_color = 'white' if cm[i, j] > cm.max() / 2 else 'black'
+            ax.text(j+0.5, i+0.5, str(cm[i, j]),
+                   ha='center', va='center',
+                   fontsize=48,
+                   fontweight='bold',
+                   color=text_color)
+    
+    # Enhance labels with ULTRA-HUGE fonts
+    ax.set_xlabel('Predicted Label', fontsize=48, fontweight='bold', labelpad=30)
+    ax.set_ylabel('Actual Label', fontsize=48, fontweight='bold', labelpad=30)
+    ax.set_title(title, fontsize=54, fontweight='bold', pad=50)
+    
+    # Enhance tick labels (class names)
+    ax.set_xticklabels(class_names, fontsize=44, fontweight='bold', rotation=45, ha='right')
+    ax.set_yticklabels(class_names, fontsize=44, fontweight='bold', rotation=0)
+    
+    # Enhance colorbar
+    cbar = ax.collections[0].colorbar
+    cbar.ax.tick_params(labelsize=32)
+    cbar.set_label('Count', fontsize=38, fontweight='bold')
+    
+    plt.tight_layout()
+    
+    # Save with high DPI
+    save_path = os.path.join(output_path, filename)
+    plt.savefig(save_path, dpi=300, bbox_inches='tight', format='png')
+    print(f"✓ Large text confusion matrix saved to: {save_path}")
+    
+    plt.show()
+    plt.close()
 
 
 # =====================================
@@ -95,25 +166,6 @@ elif MODEL_NAME == "densenet121":
     else:  # finetuned
         in_feat = model.classifier.in_features
         model.classifier = nn.Sequential(
-            nn.Linear(in_feat, 512),
-            nn.BatchNorm1d(512),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(512, 256),
-            nn.BatchNorm1d(256),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(256, 4)
-        )
-
-elif MODEL_NAME == "efficientnet_b0":
-    model = models.efficientnet_b0(weights="IMAGENET1K_V1")
-    if MODEL_TYPE == "baseline":
-        model.classifier[1] = nn.Linear(model.classifier[1].in_features, 4)
-    else:  # finetuned
-        in_feat = model.classifier[1].in_features
-        model.classifier = nn.Sequential(
-            nn.Dropout(p=0.2, inplace=True),
             nn.Linear(in_feat, 1024),
             nn.BatchNorm1d(1024),
             nn.ReLU(),
@@ -125,6 +177,28 @@ elif MODEL_NAME == "efficientnet_b0":
             nn.Linear(512, 4)
         )
 
+elif MODEL_NAME == "efficientnet_b0":
+    model = models.efficientnet_b0(weights="IMAGENET1K_V1")
+    if MODEL_TYPE == "baseline":
+        model.classifier[1] = nn.Linear(model.classifier[1].in_features, 4)
+    else:  # finetuned
+        in_feat = model.classifier[1].in_features
+        model.classifier = nn.Sequential(
+            nn.Linear(in_feat, 2048),
+            nn.BatchNorm1d(2048),
+            nn.ReLU(),
+            nn.Dropout(0.4),
+            nn.Linear(2048, 1024),
+            nn.BatchNorm1d(1024),
+            nn.ReLU(),
+            nn.Dropout(0.4),
+            nn.Linear(1024, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(512, 4)
+        )
+
 elif MODEL_NAME == "mobilenetv2":
     model = models.mobilenet_v2(weights="IMAGENET1K_V1")
     if MODEL_TYPE == "baseline":
@@ -132,15 +206,18 @@ elif MODEL_NAME == "mobilenetv2":
     else:  # finetuned
         in_feat = model.classifier[1].in_features
         model.classifier = nn.Sequential(
-            nn.Dropout(p=0.2, inplace=True),
-            nn.Linear(in_feat, 1024),
+            nn.Linear(in_feat, 2048),
+            nn.BatchNorm1d(2048),
+            nn.ReLU(),
+            nn.Dropout(0.4),
+            nn.Linear(2048, 1024),
             nn.BatchNorm1d(1024),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.Dropout(0.4),
             nn.Linear(1024, 512),
             nn.BatchNorm1d(512),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.Dropout(0.3),
             nn.Linear(512, 4)
         )
 
@@ -216,17 +293,35 @@ print("="*60)
 test_accuracy = accuracy_score(all_labels, all_predictions)
 print(f"\nTest Accuracy: {test_accuracy*100:.2f}%")
 
+# Per-class Precision
+precision_per_class = precision_score(all_labels, all_predictions, average=None)
+print("\n--- Precision per Class ---")
+for i, class_name in enumerate(class_names):
+    print(f"{class_name}: {precision_per_class[i]:.4f}")
+
 # Per-class Recall (IMPORTANT FOR MEDICAL AI)
 recall_per_class = recall_score(all_labels, all_predictions, average=None)
 print("\n--- Recall per Class (Important for Medical AI) ---")
 for i, class_name in enumerate(class_names):
-    print(f"{class_name}: {recall_per_class[i]*100:.2f}%")
+    print(f"{class_name}: {recall_per_class[i]:.4f}")
 
 # Per-class F1-Score
 f1_per_class = f1_score(all_labels, all_predictions, average=None)
 print("\n--- F1-Score per Class ---")
 for i, class_name in enumerate(class_names):
-    print(f"{class_name}: {f1_per_class[i]*100:.2f}%")
+    print(f"{class_name}: {f1_per_class[i]:.4f}")
+
+# Macro Precision
+macro_precision = precision_score(all_labels, all_predictions, average='macro')
+print(f"\nMacro Precision: {macro_precision:.4f}")
+
+# Macro Recall
+macro_recall = recall_score(all_labels, all_predictions, average='macro')
+print(f"Macro Recall: {macro_recall:.4f}")
+
+# Macro F1-Score
+macro_f1 = f1_score(all_labels, all_predictions, average='macro')
+print(f"Macro F1-Score: {macro_f1:.4f}")
 
 # AUC-ROC (one-vs-rest, macro average)
 print("\n--- AUC-ROC (One-vs-Rest, Macro Average) ---")
@@ -259,7 +354,7 @@ print("\n--- Confusion Matrix ---")
 cm = confusion_matrix(all_labels, all_predictions)
 print(cm)
 
-# Plot Confusion Matrix
+# Plot Standard Confusion Matrix
 plt.figure(figsize=(10, 8))
 sns.heatmap(
     cm, 
@@ -275,11 +370,16 @@ plt.ylabel('Actual', fontsize=12)
 plt.xlabel('Predicted', fontsize=12)
 plt.tight_layout()
 
-# Save Confusion Matrix with proper naming
+# Save Standard Confusion Matrix
 cm_save_path = os.path.join(ROOT_DIR, f"outputs/confusion_matrix/confusion_matrix_{MODEL_NAME}_{MODEL_TYPE}.png")
 plt.savefig(cm_save_path, dpi=300, bbox_inches='tight')
-print(f"\n✓ Confusion Matrix saved to: {cm_save_path}")
+print(f"✓ Standard confusion matrix saved to: {cm_save_path}")
 plt.close()
+
+# Plot Large Text Confusion Matrix (with 48pt font like in improved_confusion_matrices.ipynb)
+cm_large_title = f'Confusion Matrix - {MODEL_NAME.upper()} ({MODEL_TYPE.upper()})\nEnhanced Readability - Large Text'
+cm_large_filename = f'confusion_matrix_{MODEL_NAME}_{MODEL_TYPE}_LARGE.png'
+plot_large_confusion_matrix(cm, cm_large_title, cm_large_filename, os.path.join(ROOT_DIR, "outputs/confusion_matrix"), class_names)
 
 
 # =====================================
@@ -290,6 +390,10 @@ plt.close()
 evaluation_results = {
     'Metric': [
         'Test Accuracy',
+        'Normal - Precision',
+        'Pneumonia - Precision',
+        'COVID-19 - Precision',
+        'Tuberculosis - Precision',
         'Normal - Recall',
         'Pneumonia - Recall',
         'COVID-19 - Recall',
@@ -298,6 +402,9 @@ evaluation_results = {
         'Pneumonia - F1-Score',
         'COVID-19 - F1-Score',
         'Tuberculosis - F1-Score',
+        'Macro Precision',
+        'Macro Recall',
+        'Macro F1-Score',
         'Macro AUC-ROC',
         'Normal - AUC-ROC',
         'Pneumonia - AUC-ROC',
@@ -306,6 +413,10 @@ evaluation_results = {
     ],
     'Value': [
         test_accuracy,
+        precision_per_class[0],
+        precision_per_class[1],
+        precision_per_class[2],
+        precision_per_class[3],
         recall_per_class[0],
         recall_per_class[1],
         recall_per_class[2],
@@ -314,6 +425,9 @@ evaluation_results = {
         f1_per_class[1],
         f1_per_class[2],
         f1_per_class[3],
+        macro_precision,
+        macro_recall,
+        macro_f1,
         auc_score,
         per_class_auc[0],
         per_class_auc[1],
@@ -334,13 +448,20 @@ with open(report_txt_path, 'w') as f:
     f.write("="*60 + "\n")
     f.write(f"EVALUATION RESULTS - {MODEL_NAME.upper()} ({MODEL_TYPE.upper()})\n")
     f.write("="*60 + "\n\n")
-    f.write(f"Test Accuracy: {test_accuracy*100:.2f}%\n\n")
-    f.write("--- Recall per Class ---\n")
+    f.write(f"Test Accuracy: {test_accuracy:.4f}\n\n")
+    f.write("--- Precision per Class ---\n")
     for i, class_name in enumerate(class_names):
-        f.write(f"{class_name}: {recall_per_class[i]*100:.2f}%\n")
+        f.write(f"{class_name}: {precision_per_class[i]:.4f}\n")
+    f.write("\n--- Recall per Class ---\n")
+    for i, class_name in enumerate(class_names):
+        f.write(f"{class_name}: {recall_per_class[i]:.4f}\n")
     f.write("\n--- F1-Score per Class ---\n")
     for i, class_name in enumerate(class_names):
-        f.write(f"{class_name}: {f1_per_class[i]*100:.2f}%\n")
+        f.write(f"{class_name}: {f1_per_class[i]:.4f}\n")
+    f.write("\n--- Macro Metrics ---\n")
+    f.write(f"Macro Precision: {macro_precision:.4f}\n")
+    f.write(f"Macro Recall: {macro_recall:.4f}\n")
+    f.write(f"Macro F1-Score: {macro_f1:.4f}\n")
     f.write("\n--- AUC-ROC Scores ---\n")
     f.write(f"Macro AUC-ROC: {auc_score:.4f}\n")
     f.write("Per-Class AUC-ROC:\n")
@@ -362,9 +483,16 @@ print("\n" + "="*60)
 print(f"✓ EVALUATION COMPLETE - {MODEL_NAME.upper()} ({MODEL_TYPE.upper()})")
 print("="*60)
 print(f"\nGenerated outputs:")
-print(f"  - Confusion Matrix: confusion_matrix_{MODEL_NAME}_{MODEL_TYPE}.png")
+print(f"  - Confusion Matrix (Standard): confusion_matrix_{MODEL_NAME}_{MODEL_TYPE}.png")
+print(f"  - Confusion Matrix (Large Text): confusion_matrix_{MODEL_NAME}_{MODEL_TYPE}_LARGE.png")
 print(f"  - Evaluation Results: evaluation_results_{MODEL_NAME}_{MODEL_TYPE}.csv")
 print(f"  - Classification Report: classification_report_{MODEL_NAME}_{MODEL_TYPE}.txt")
+print(f"\nMetrics calculated:")
+print(f"  ✓ Accuracy")
+print(f"  ✓ Per-class Precision, Recall, F1-Score")
+print(f"  ✓ Macro Precision, Macro Recall, Macro F1-Score")
+print(f"  ✓ Per-class AUC-ROC, Macro AUC-ROC")
+print(f"  ✓ Confusion Matrices (standard and large text)")
 print(f"\nAll files saved to:")
 print(f"  - {os.path.join(ROOT_DIR, 'outputs/confusion_matrix/')}")
 print(f"  - {os.path.join(ROOT_DIR, 'outputs/logs/')}")

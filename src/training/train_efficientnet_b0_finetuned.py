@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from torch.utils.data import DataLoader, WeightedRandomSampler
+from torch.utils.data import DataLoader
 from torchvision import models
 from tqdm import tqdm
 
@@ -50,37 +50,32 @@ model = models.efficientnet_b0(weights="IMAGENET1K_V1")
 
 num_features = model.classifier[1].in_features  # 1280
 
-# Stronger classifier head for medical imaging (more capacity)
 model.classifier = nn.Sequential(
-    nn.Linear(num_features, 2048),
-    nn.BatchNorm1d(2048),
-    nn.ReLU(),
-    nn.Dropout(0.4),
-    nn.Linear(2048, 1024),
+    nn.Linear(num_features, 1024),
     nn.BatchNorm1d(1024),
     nn.ReLU(),
-    nn.Dropout(0.4),
+    nn.Dropout(0.5),
     nn.Linear(1024, 512),
     nn.BatchNorm1d(512),
     nn.ReLU(),
-    nn.Dropout(0.3),
+    nn.Dropout(0.5),
     nn.Linear(512, 4)
 )
 
 model = model.to(device)
 
 # =====================================
-# LOSS FUNCTION (standard, no class weighting for Stage 1)
+# LOSS FUNCTION (with label smoothing)
 # =====================================
 
-criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
+criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
 # =====================================
-# TRAINING SETTINGS (Architecture-specific for lightweight EfficientNet-B0)
+# TRAINING SETTINGS
 # =====================================
 
-STAGE_1_EPOCHS = 8  # Longer Stage 1 to stabilize stronger head (was 5)
-STAGE_2_EPOCHS = 10  # Progressive fine-tuning
+STAGE_1_EPOCHS = 5
+STAGE_2_EPOCHS = 10
 best_val_acc = 0.0
 best_epoch = 0
 best_stage = ""
@@ -102,7 +97,7 @@ for name, param in model.named_parameters():
 # Fix 3: Lower LR for Stage 1
 optimizer = optim.Adam(
     filter(lambda p: p.requires_grad, model.parameters()),
-    lr=3e-4
+    lr=1e-3
 )
 scheduler = CosineAnnealingLR(optimizer, T_max=STAGE_1_EPOCHS)
 
@@ -160,21 +155,18 @@ for epoch in range(STAGE_1_EPOCHS):
         print("✓ Best model saved.")
 
 # =====================================
-# STAGE 2: PROGRESSIVE UNFREEZING (last 2 blocks + head)
+# STAGE 2: Unfreeze top layers, fine-tune
 # =====================================
 
 print("\n" + "="*60)
-print("STAGE 2: Progressive Fine-tuning (Last 2 Blocks + Head)")
+print("STAGE 2: Fine-tuning Top Layers + Head")
 print("="*60)
 
-# Progressive unfreeze: only last 2 blocks for lightweight model
-# (more conservative than unfreezing blocks 6-8)
+# Fix 4: Correct EfficientNet layer names
 for name, param in model.named_parameters():
-    if ("features.7" in name or "features.8" in name or
-            "classifier" in name):
+    if ("features.6" in name or "features.7" in name or
+            "features.8" in name or "classifier" in name):
         param.requires_grad = True
-    else:
-        param.requires_grad = False
 
 optimizer = optim.Adam(
     filter(lambda p: p.requires_grad, model.parameters()),

@@ -9,7 +9,6 @@ from torchvision import models
 from torch.utils.data import DataLoader
 
 from tqdm import tqdm
-from torch.utils.data import WeightedRandomSampler
 
 from src.datasets.chest_xray_dataset import ChestXrayDataset
 from src.datasets.transform import train_transform, val_transform
@@ -94,20 +93,15 @@ model = models.mobilenet_v2(weights="IMAGENET1K_V1")
 
 num_features = model.classifier[1].in_features  # 1280 for MobileNetV2
 
-# Stronger classifier head for medical imaging (more capacity)
 model.classifier = nn.Sequential(
-    nn.Linear(num_features, 2048),
-    nn.BatchNorm1d(2048),
-    nn.ReLU(),
-    nn.Dropout(0.4),
-    nn.Linear(2048, 1024),
+    nn.Linear(num_features, 1024),
     nn.BatchNorm1d(1024),
     nn.ReLU(),
-    nn.Dropout(0.4),
+    nn.Dropout(0.5),
     nn.Linear(1024, 512),
     nn.BatchNorm1d(512),
     nn.ReLU(),
-    nn.Dropout(0.3),
+    nn.Dropout(0.5),
     nn.Linear(512, 4)
 )
 
@@ -120,18 +114,18 @@ model = model.to(device)
 
 
 # =====================================
-# LOSS FUNCTION (standard, no class weighting for Stage 1)
+# LOSS FUNCTION (with label smoothing)
 # =====================================
 
-criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
+criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 
 
 # =====================================
-# TRAINING SETTINGS (Architecture-specific for lightweight MobileNetV2)
+# TRAINING SETTINGS
 # =====================================
 
-STAGE_1_EPOCHS = 8  # Longer Stage 1 to stabilize stronger head (was 5)
-STAGE_2_EPOCHS = 10  # Progressive fine-tuning
+STAGE_1_EPOCHS = 5  # Freeze backbone, train head only
+STAGE_2_EPOCHS = 10  # Fine-tune top layers + head
 
 best_val_acc = 0.0
 best_epoch = 0
@@ -157,7 +151,7 @@ for name, param in model.named_parameters():
 # Create optimizer for Stage 1 (only trainable parameters)
 optimizer = optim.Adam(
     filter(lambda p: p.requires_grad, model.parameters()),
-    lr=3e-4  # Reduced from 1e-3 to prevent head instability
+    lr=1e-3  # Higher learning rate for stage 1
 )
 
 # Learning rate scheduler for Stage 1
@@ -281,20 +275,17 @@ for epoch in range(STAGE_1_EPOCHS):
 
 
 # =====================================
-# STAGE 2: PROGRESSIVE UNFREEZING (last 2 blocks + head)
+# STAGE 2: UNFREEZE TOP LAYERS, FINE-TUNE (10 epochs)
 # =====================================
 
 print("\n" + "="*60)
-print("STAGE 2: Progressive Fine-tuning (Last 2 Blocks + Head)")
+print("STAGE 2: Fine-tuning Top Layers + Head")
 print("="*60)
 
-# Progressive unfreeze: only last 2 blocks for lightweight model
-# (more conservative than unfreezing blocks 15-18)
+# Unfreeze top inverted residual blocks and classifier
 for name, param in model.named_parameters():
-    if "features.17" in name or "features.18" in name or "classifier" in name:
+    if "features.15" in name or "features.16" in name or "features.17" in name or "features.18" in name or "classifier" in name:
         param.requires_grad = True
-    else:
-        param.requires_grad = False
 
 # Create optimizer for Stage 2 (all trainable parameters now)
 optimizer = optim.Adam(
