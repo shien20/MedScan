@@ -23,8 +23,8 @@ from src.models.ensemble import HeavyEnsemble, LightEnsemble
 # CONFIG
 # =====================================
 
-ENSEMBLE_TYPE  = "heavy"   # change to "light" for lightweight ensemble
-EPOCHS         = 20        # unified single training stage
+ENSEMBLE_TYPE  = "light"   # change to "light" for lightweight ensemble
+EPOCHS         = 15        # unified single training stage
 BATCH_SIZE     = 16
 PATIENCE       = 5         # early stopping patience
 LEARNING_RATE  = 3e-4
