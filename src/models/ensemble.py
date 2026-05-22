@@ -19,9 +19,10 @@ class HeavyEnsemble(nn.Module):
 
         if resnet_path:
             state = torch.load(resnet_path, map_location="cpu")
-            resnet.load_state_dict(state, strict=False)
-            # strict=False because saved .pth includes the old fc head
-            # which no longer matches — backbone weights load correctly
+            # Filter state dict to only load backbone layers (skip fc which has size mismatch)
+            backbone_state = {k: v for k, v in state.items() 
+                            if not k.startswith("fc.")}
+            resnet.load_state_dict(backbone_state, strict=False)
             print(f"ResNet50 weights loaded from: {resnet_path}")
 
         # Remove classification head — keep everything up to avgpool
@@ -36,7 +37,11 @@ class HeavyEnsemble(nn.Module):
 
         if densenet_path:
             state = torch.load(densenet_path, map_location="cpu")
-            densenet.load_state_dict(state, strict=False)
+            # Filter state dict to only load features (skip classifier which has size mismatch)
+            features_state = {k.replace("features.", ""): v for k, v in state.items() 
+                            if k.startswith("features.")}
+            if features_state:
+                densenet.features.load_state_dict(features_state, strict=False)
             print(f"DenseNet121 weights loaded from: {densenet_path}")
 
         # DenseNet121: features block outputs (batch, 1024, 7, 7)
@@ -129,7 +134,11 @@ class LightEnsemble(nn.Module):
 
         if efficientnet_path:
             state = torch.load(efficientnet_path, map_location="cpu")
-            efficientnet.load_state_dict(state, strict=False)
+            # Filter state dict to only load features (skip classifier which has size mismatch)
+            features_state = {k.replace("features.", ""): v for k, v in state.items() 
+                            if k.startswith("features.")}
+            if features_state:
+                efficientnet.features.load_state_dict(features_state, strict=False)
             print(f"EfficientNet-B0 weights loaded from: {efficientnet_path}")
 
         # EfficientNet-B0: features block → GAP → (batch, 1280)
@@ -141,7 +150,11 @@ class LightEnsemble(nn.Module):
 
         if mobilenet_path:
             state = torch.load(mobilenet_path, map_location="cpu")
-            mobilenet.load_state_dict(state, strict=False)
+            # Filter state dict to only load features (skip classifier which has size mismatch)
+            features_state = {k.replace("features.", ""): v for k, v in state.items() 
+                            if k.startswith("features.")}
+            if features_state:
+                mobilenet.features.load_state_dict(features_state, strict=False)
             print(f"MobileNetV2 weights loaded from: {mobilenet_path}")
 
         # MobileNetV2: features block → GAP → (batch, 1280)

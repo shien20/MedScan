@@ -1,3 +1,11 @@
+"""
+Simplified Ensemble Training (Baseline Models Only)
+- Skips 2-stage training
+- Loads baseline checkpoints directly
+- Trains fusion classifier with frozen backbones (single unified training)
+- Better performance since baseline models outperform finetuned versions
+"""
+
 import os
 import pandas as pd
 import torch
@@ -12,18 +20,19 @@ from src.datasets.transform import train_transform, val_transform
 from src.models.ensemble import HeavyEnsemble, LightEnsemble
 
 # =====================================
-# CONFIG — switch between "heavy" / "light"
+# CONFIG
 # =====================================
 
 ENSEMBLE_TYPE  = "heavy"   # change to "light" for lightweight ensemble
-STAGE1_EPOCHS  = 5
-STAGE2_EPOCHS  = 10
+EPOCHS         = 20        # unified single training stage
 BATCH_SIZE     = 16
 PATIENCE       = 5         # early stopping patience
+LEARNING_RATE  = 3e-4
 
 ROOT_DIR = os.getcwd()
 
-RESNET_PATH      = os.path.join(ROOT_DIR, "outputs/models/best_resnet50.pth")
+# Load baseline models only
+RESNET_PATH      = os.path.join(ROOT_DIR, "outputs/models/baseline_resnet50.pth")
 DENSENET_PATH    = os.path.join(ROOT_DIR, "outputs/models/baseline_densenet121.pth")
 EFFICIENTNET_PATH = os.path.join(ROOT_DIR, "outputs/models/baseline_efficientnet_b0.pth")
 MOBILENET_PATH   = os.path.join(ROOT_DIR, "outputs/models/baseline_mobilenetv2.pth")
@@ -33,7 +42,8 @@ os.makedirs(os.path.join(ROOT_DIR, "outputs/logs"),   exist_ok=True)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
-print(f"Training: {ENSEMBLE_TYPE.upper()} ENSEMBLE")
+print(f"Training: {ENSEMBLE_TYPE.upper()} ENSEMBLE (BASELINE MODELS)")
+print(f"Training strategy: Single-stage (backbones frozen, classifier trained)")
 
 # =====================================
 # DATASETS
@@ -79,17 +89,29 @@ if ENSEMBLE_TYPE == "heavy":
         resnet_path=RESNET_PATH,
         densenet_path=DENSENET_PATH
     )
-    save_name = "best_heavy_ensemble.pth"
-    log_name  = "heavy_ensemble_metrics.csv"
+    save_name = "baseline_heavy_ensemble.pth"
+    log_name  = "baseline_heavy_ensemble_metrics.csv"
 else:
     model = LightEnsemble(
         efficientnet_path=EFFICIENTNET_PATH,
         mobilenet_path=MOBILENET_PATH
     )
-    save_name = "best_light_ensemble.pth"
-    log_name  = "light_ensemble_metrics.csv"
+    save_name = "baseline_light_ensemble.pth"
+    log_name  = "baseline_light_ensemble_metrics.csv"
 
 model = model.to(device)
+
+# =====================================
+# FREEZE BACKBONES (keep them frozen throughout)
+# =====================================
+
+print("\nFreezing backbone layers...")
+model.freeze_backbones()
+
+# Verify only classifier is trainable
+trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+total_params     = sum(p.numel() for p in model.parameters())
+print(f"Trainable parameters: {trainable_params:,} / {total_params:,}")
 
 # =====================================
 # WEIGHTED LOSS
@@ -166,117 +188,73 @@ model_save_path = os.path.join(ROOT_DIR, f"outputs/models/{save_name}")
 best_val_acc    = 0.0
 best_val_loss   = float("inf")
 best_epoch      = 0
-best_stage      = ""
 metrics         = []
-global_epoch    = 0
 early_stopper   = EarlyStopping(patience=PATIENCE)
 
 # =====================================
-# STAGE 1 — Frozen backbones
-# Train fusion classifier head only
+# UNIFIED TRAINING — Single Stage
+# Train fusion classifier with frozen backbones
 # =====================================
 
 print("\n" + "="*60)
-print("STAGE 1: Training Fusion Classifier (Backbones Frozen)")
+print("BASELINE ENSEMBLE TRAINING (Unified Stage)")
+print("Backbones: FROZEN | Training: Fusion Classifier Only")
 print("="*60)
 
-model.freeze_backbones()
-
-optimizer_s1 = optim.Adam(
+optimizer = optim.Adam(
     filter(lambda p: p.requires_grad, model.parameters()),
-    lr=3e-4
+    lr=LEARNING_RATE
 )
-scheduler_s1 = CosineAnnealingLR(optimizer_s1, T_max=STAGE1_EPOCHS)
+scheduler = CosineAnnealingLR(optimizer, T_max=EPOCHS)
 
-for epoch in range(STAGE1_EPOCHS):
-    global_epoch += 1
-    print(f"\nEpoch [{epoch+1}/{STAGE1_EPOCHS}] — Stage 1")
+for epoch in range(EPOCHS):
+    print(f"\nEpoch [{epoch+1}/{EPOCHS}]")
 
-    train_loss, train_acc = run_epoch(model, train_loader, optimizer_s1, is_train=True)
+    train_loss, train_acc = run_epoch(model, train_loader, optimizer, is_train=True)
     val_loss,   val_acc   = run_epoch(model, val_loader,   is_train=False)
 
-    scheduler_s1.step()
+    scheduler.step()
 
     print(f"  Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
     print(f"  Val Loss:   {val_loss:.4f}   | Val Acc:   {val_acc:.2f}%")
 
     metrics.append({
-        "epoch": global_epoch, "stage": "Stage 1",
-        "train_loss": train_loss, "train_accuracy": train_acc,
-        "val_loss": val_loss, "val_accuracy": val_acc
+        "epoch": epoch + 1,
+        "stage": "Baseline",
+        "train_loss": train_loss,
+        "train_accuracy": train_acc,
+        "val_loss": val_loss,
+        "val_accuracy": val_acc
     })
 
+    # Best model tracking
     if val_acc > best_val_acc:
         best_val_acc  = val_acc
         best_val_loss = val_loss
-        best_epoch    = global_epoch
-        best_stage    = "Stage 1"
+        best_epoch    = epoch + 1
         torch.save(model.state_dict(), model_save_path)
         print(f"  ✓ Best model saved (val acc: {val_acc:.2f}%)")
 
-# =====================================
-# STAGE 2 — Unfreeze top layers
-# Fine-tune with lower LR + early stopping
-# =====================================
-
-print("\n" + "="*60)
-print("STAGE 2: Fine-Tuning Top Backbone Layers")
-print("="*60)
-
-model.unfreeze_top_layers()
-
-# Slightly lower LR than individual model fine-tuning
-# because we are updating two backbones simultaneously
-optimizer_s2 = optim.Adam(
-    filter(lambda p: p.requires_grad, model.parameters()),
-    lr=5e-5
-)
-scheduler_s2 = CosineAnnealingLR(optimizer_s2, T_max=STAGE2_EPOCHS)
-
-for epoch in range(STAGE2_EPOCHS):
-    global_epoch += 1
-    print(f"\nEpoch [{epoch+1}/{STAGE2_EPOCHS}] — Stage 2")
-
-    train_loss, train_acc = run_epoch(model, train_loader, optimizer_s2, is_train=True)
-    val_loss,   val_acc   = run_epoch(model, val_loader,   is_train=False)
-
-    scheduler_s2.step()
-
-    print(f"  Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}%")
-    print(f"  Val Loss:   {val_loss:.4f}   | Val Acc:   {val_acc:.2f}%")
-
-    metrics.append({
-        "epoch": global_epoch, "stage": "Stage 2",
-        "train_loss": train_loss, "train_accuracy": train_acc,
-        "val_loss": val_loss, "val_accuracy": val_acc
-    })
-
-    if val_acc > best_val_acc:
-        best_val_acc  = val_acc
-        best_val_loss = val_loss
-        best_epoch    = global_epoch
-        best_stage    = "Stage 2"
-        torch.save(model.state_dict(), model_save_path)
-        print(f"  ✓ Best model saved (val acc: {val_acc:.2f}%)")
-
-    # Early stopping based on validation loss
+    # Early stopping
     early_stopper.step(val_loss)
     if early_stopper.stop:
-        print(f"\n  Early stopping triggered at epoch {global_epoch}.")
+        print(f"\n✓ Early stopping triggered at epoch {epoch+1}")
         break
 
 # =====================================
-# SAVE METRICS
+# SAVE METRICS & SUMMARY
 # =====================================
 
 metrics_df = pd.DataFrame(metrics)
-log_path   = os.path.join(ROOT_DIR, f"outputs/logs/{log_name}")
-metrics_df.to_csv(log_path, index=False)
+metrics_csv_path = os.path.join(ROOT_DIR, f"outputs/logs/{log_name}")
+metrics_df.to_csv(metrics_csv_path, index=False)
+print(f"\n✓ Metrics saved to: {metrics_csv_path}")
 
 print("\n" + "="*60)
-print("Training Complete.")
+print("TRAINING COMPLETE")
 print("="*60)
-print(f"Best Val Accuracy : {best_val_acc:.2f}%")
-print(f"At Epoch          : {best_epoch} ({best_stage})")
-print(f"Metrics saved to  : {log_path}")
-print(f"Model saved to    : {model_save_path}")
+print(f"Best Model:    {model_save_path}")
+print(f"Best Val Acc:  {best_val_acc:.2f}% (Epoch {best_epoch})")
+print(f"Best Val Loss: {best_val_loss:.4f}")
+print(f"Metrics CSV:   {metrics_csv_path}")
+print("="*60)
