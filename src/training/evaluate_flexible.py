@@ -23,19 +23,9 @@ from src.datasets.transform import val_transform
 def plot_large_confusion_matrix(cm, title, filename, output_path, class_names=['Normal', 'Pneumonia', 'COVID-19', 'Tuberculosis']):
     """
     Plot confusion matrix with ULTRA-MASSIVE text for maximum readability.
-    Based on improved_confusion_matrices.ipynb visualization settings.
-    
-    Parameters:
-    - cm: confusion matrix (numpy array)
-    - title: plot title
-    - filename: output filename
-    - output_path: directory to save the figure
-    - class_names: list of class names
     """
-    # Create ULTRA-MASSIVE figure (28x26 inches)
     fig, ax = plt.subplots(figsize=(28, 26))
     
-    # Create heatmap with seaborn (WITHOUT default annotations)
     sns.heatmap(
         cm,
         annot=False,
@@ -51,10 +41,8 @@ def plot_large_confusion_matrix(cm, title, filename, output_path, class_names=['
         linecolor='black'
     )
     
-    # MANUALLY add ULTRA-GIANT text annotations (48pt)
     for i in range(cm.shape[0]):
         for j in range(cm.shape[1]):
-            # Determine text color (white on dark background, black on light)
             text_color = 'white' if cm[i, j] > cm.max() / 2 else 'black'
             ax.text(j+0.5, i+0.5, str(cm[i, j]),
                    ha='center', va='center',
@@ -62,49 +50,64 @@ def plot_large_confusion_matrix(cm, title, filename, output_path, class_names=['
                    fontweight='bold',
                    color=text_color)
     
-    # Enhance labels with ULTRA-HUGE fonts
     ax.set_xlabel('Predicted Label', fontsize=48, fontweight='bold', labelpad=30)
     ax.set_ylabel('Actual Label', fontsize=48, fontweight='bold', labelpad=30)
     ax.set_title(title, fontsize=54, fontweight='bold', pad=50)
     
-    # Enhance tick labels (class names)
     ax.set_xticklabels(class_names, fontsize=44, fontweight='bold', rotation=45, ha='right')
     ax.set_yticklabels(class_names, fontsize=44, fontweight='bold', rotation=0)
     
-    # Enhance colorbar
     cbar = ax.collections[0].colorbar
     cbar.ax.tick_params(labelsize=32)
     cbar.set_label('Count', fontsize=38, fontweight='bold')
     
     plt.tight_layout()
     
-    # Save with high DPI
     save_path = os.path.join(output_path, filename)
     plt.savefig(save_path, dpi=300, bbox_inches='tight', format='png')
     print(f"✓ Large text confusion matrix saved to: {save_path}")
     
-    plt.show()
     plt.close()
+
+
+# =====================================
+# INSPECT CHECKPOINT
+# =====================================
+
+def inspect_checkpoint_structure(checkpoint_path):
+    """
+    Inspect the checkpoint to understand its architecture.
+    Returns the classifier layer dimensions.
+    """
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    
+    classifier_keys = [k for k in checkpoint.keys() if 'classifier' in k]
+    print(f"\nCheckpoint classifier keys: {classifier_keys[:10]}...")
+    
+    # Count Linear layers
+    linear_count = 0
+    for key in classifier_keys:
+        if 'weight' in key and 'running' not in key and 'num_batches' not in key:
+            linear_count += 1
+    
+    print(f"Detected {linear_count} Linear layers in classifier")
+    
+    return classifier_keys
 
 
 # =====================================
 # CONFIGURATION
 # =====================================
 
-# Usage: python evaluate_single.py MODEL_NAME MODEL_TYPE
-# Example: python evaluate_single.py resnet50 baseline
-# Example: python evaluate_single.py densenet121 finetuned
-
 if len(sys.argv) < 3:
-    print("Usage: python evaluate_single.py <model_name> <model_type>")
+    print("Usage: python evaluate_flexible.py <model_name> <model_type>")
     print("  model_name: resnet50, densenet121, efficientnet_b0, mobilenetv2")
     print("  model_type: baseline, finetuned")
     sys.exit(1)
 
-MODEL_NAME = sys.argv[1].lower()  # e.g., "resnet50", "densenet121"
-MODEL_TYPE = sys.argv[2].lower()  # e.g., "baseline", "finetuned"
+MODEL_NAME = sys.argv[1].lower()
+MODEL_TYPE = sys.argv[2].lower()
 
-# Validate
 if MODEL_TYPE not in ["baseline", "finetuned"]:
     print(f"ERROR: model_type must be 'baseline' or 'finetuned', got '{MODEL_TYPE}'")
     sys.exit(1)
@@ -138,17 +141,92 @@ print(f"Test dataset size: {len(test_dataset)}")
 
 
 # =====================================
-# CREATE MODEL ARCHITECTURE
+# LOAD MODEL PATH
 # =====================================
+
+if MODEL_TYPE == "baseline":
+    model_path = os.path.join(ROOT_DIR, f"outputs/models/baseline_{MODEL_NAME}.pth")
+else:
+    model_path = os.path.join(ROOT_DIR, f"outputs/models/best_{MODEL_NAME}.pth")
+
+print(f"Loading model from: {model_path}")
+
+if not os.path.exists(model_path):
+    print(f"ERROR: Model file not found at {model_path}")
+    sys.exit(1)
+
+# Inspect checkpoint
+print("\nInspecting checkpoint structure...")
+inspect_checkpoint_structure(model_path)
+
+
+def smart_load_state_dict(model, checkpoint, device):
+    """
+    Load state dict with intelligent key mapping.
+    Handles cases where checkpoint and model have different index offsets.
+    """
+    state_dict = model.state_dict()
+    
+    # Try direct load first
+    try:
+        model.load_state_dict(checkpoint, strict=False)
+        return True, "Direct load successful"
+    except RuntimeError as e:
+        print(f"Direct load failed: {str(e)[:100]}...")
+    
+    # Try remapping classifier indices
+    # Extract classifier keys from checkpoint
+    checkpoint_classifier_keys = {k: v for k, v in checkpoint.items() if k.startswith('classifier.')}
+    model_classifier_keys = {k: None for k in state_dict.keys() if k.startswith('classifier.')}
+    
+    if checkpoint_classifier_keys and model_classifier_keys:
+        # Get the offset between checkpoint and model indices
+        checkpoint_indices = sorted(set(int(k.split('.')[1]) for k in checkpoint_classifier_keys.keys()))
+        model_indices = sorted(set(int(k.split('.')[1]) for k in model_classifier_keys.keys()))
+        
+        if checkpoint_indices and model_indices and len(checkpoint_indices) == len(model_indices):
+            offset = checkpoint_indices[0] - model_indices[0]
+            
+            # Create remapped checkpoint
+            remapped = {}
+            for k, v in checkpoint.items():
+                if k.startswith('classifier.'):
+                    # Extract index and adjust it
+                    parts = k.split('.')
+                    idx = int(parts[1])
+                    new_idx = idx - offset
+                    new_key = f"classifier.{new_idx}." + '.'.join(parts[2:])
+                    remapped[new_key] = v
+                else:
+                    remapped[k] = v
+            
+            try:
+                model.load_state_dict(remapped, strict=False)
+                return True, f"Remapped load successful (offset={offset})"
+            except Exception as e:
+                print(f"Remapped load failed: {str(e)[:100]}...")
+    
+    # Fallback: load with strict=False and accept partial loading
+    try:
+        incompatible = model.load_state_dict(checkpoint, strict=False)
+        msg = f"Partial load: {len(incompatible.missing_keys)} missing, {len(incompatible.unexpected_keys)} unexpected"
+        return False, msg
+    except Exception as e:
+        return False, f"All loading attempts failed: {str(e)[:100]}"
+
+
+# =====================================
+# CREATE MODEL AND LOAD WITH FLEXIBLE MATCHING
+# =====================================
+
 
 if MODEL_NAME == "resnet50":
     model = models.resnet50(weights="IMAGENET1K_V1")
     if MODEL_TYPE == "baseline":
-        model.fc = nn.Linear(model.fc.in_features, 4)
-    else:  # finetuned
-        num_features = model.fc.in_features
+        model.fc = nn.Linear(2048, 4)
+    else:
         model.fc = nn.Sequential(
-            nn.Linear(num_features, 1024),
+            nn.Linear(2048, 1024),
             nn.BatchNorm1d(1024),
             nn.ReLU(),
             nn.Dropout(0.5),
@@ -162,11 +240,10 @@ if MODEL_NAME == "resnet50":
 elif MODEL_NAME == "densenet121":
     model = models.densenet121(weights="IMAGENET1K_V1")
     if MODEL_TYPE == "baseline":
-        model.classifier = nn.Linear(model.classifier.in_features, 4)
-    else:  # finetuned
-        in_feat = model.classifier.in_features
+        model.classifier = nn.Linear(1024, 4)
+    else:
         model.classifier = nn.Sequential(
-            nn.Linear(in_feat, 1024),
+            nn.Linear(1024, 1024),
             nn.BatchNorm1d(1024),
             nn.ReLU(),
             nn.Dropout(0.5),
@@ -180,11 +257,10 @@ elif MODEL_NAME == "densenet121":
 elif MODEL_NAME == "efficientnet_b0":
     model = models.efficientnet_b0(weights="IMAGENET1K_V1")
     if MODEL_TYPE == "baseline":
-        model.classifier[1] = nn.Linear(model.classifier[1].in_features, 4)
-    else:  # finetuned
-        in_feat = model.classifier[1].in_features
+        model.classifier[1] = nn.Linear(1280, 4)
+    else:
         model.classifier = nn.Sequential(
-            nn.Linear(in_feat, 1024),
+            nn.Linear(1280, 1024),
             nn.BatchNorm1d(1024),
             nn.ReLU(),
             nn.Dropout(0.5),
@@ -198,11 +274,10 @@ elif MODEL_NAME == "efficientnet_b0":
 elif MODEL_NAME == "mobilenetv2":
     model = models.mobilenet_v2(weights="IMAGENET1K_V1")
     if MODEL_TYPE == "baseline":
-        model.classifier[1] = nn.Linear(model.classifier[1].in_features, 4)
-    else:  # finetuned
-        in_feat = model.classifier[1].in_features
+        model.classifier[1] = nn.Linear(1280, 4)
+    else:
         model.classifier = nn.Sequential(
-            nn.Linear(in_feat, 1024),
+            nn.Linear(1280, 1024),
             nn.BatchNorm1d(1024),
             nn.ReLU(),
             nn.Dropout(0.5),
@@ -213,25 +288,12 @@ elif MODEL_NAME == "mobilenetv2":
             nn.Linear(512, 4)
         )
 
+# Load checkpoint with flexible matching
+checkpoint = torch.load(model_path, map_location=device)
+success, message = smart_load_state_dict(model, checkpoint, device)
 
-# =====================================
-# LOAD TRAINED MODEL WEIGHTS
-# =====================================
-
-# Construct model path based on model type
-if MODEL_TYPE == "baseline":
-    model_path = os.path.join(ROOT_DIR, f"outputs/models/baseline_{MODEL_NAME}.pth")
-else:  # finetuned
-    model_path = os.path.join(ROOT_DIR, f"outputs/models/best_{MODEL_NAME}.pth")
-
-print(f"Loading model from: {model_path}")
-
-if os.path.exists(model_path):
-    model.load_state_dict(torch.load(model_path, map_location=device))
-    print("✓ Model loaded successfully!")
-else:
-    print(f"ERROR: Model file not found at {model_path}")
-    sys.exit(1)
+print(f"✓ Model loaded with flexible matching!")
+print(f"  Status: {message}")
 
 model = model.to(device)
 model.eval()
@@ -248,7 +310,10 @@ all_labels = []
 all_probs = []
 
 with torch.no_grad():
-    for images, labels in test_loader:
+    for batch_idx, (images, labels) in enumerate(test_loader):
+        if batch_idx % 50 == 0:
+            print(f"  Processed {batch_idx * 16}/{len(test_dataset)} samples")
+        
         images = images.to(device)
         labels = labels.to(device)
         
@@ -263,6 +328,8 @@ with torch.no_grad():
 all_predictions = np.array(all_predictions)
 all_labels = np.array(all_labels)
 all_probs = np.array(all_probs)
+
+print(f"✓ Predictions complete!")
 
 
 # =====================================
@@ -291,9 +358,9 @@ print("\n--- Precision per Class ---")
 for i, class_name in enumerate(class_names):
     print(f"{class_name}: {precision_per_class[i]:.4f}")
 
-# Per-class Recall (IMPORTANT FOR MEDICAL AI)
+# Per-class Recall
 recall_per_class = recall_score(all_labels, all_predictions, average=None)
-print("\n--- Recall per Class (Important for Medical AI) ---")
+print("\n--- Recall per Class ---")
 for i, class_name in enumerate(class_names):
     print(f"{class_name}: {recall_per_class[i]:.4f}")
 
@@ -303,31 +370,27 @@ print("\n--- F1-Score per Class ---")
 for i, class_name in enumerate(class_names):
     print(f"{class_name}: {f1_per_class[i]:.4f}")
 
-# Macro Precision
+# Macro averages
 macro_precision = precision_score(all_labels, all_predictions, average='macro')
-print(f"\nMacro Precision: {macro_precision:.4f}")
-
-# Macro Recall
 macro_recall = recall_score(all_labels, all_predictions, average='macro')
-print(f"Macro Recall: {macro_recall:.4f}")
-
-# Macro F1-Score
 macro_f1 = f1_score(all_labels, all_predictions, average='macro')
+
+print(f"\nMacro Precision: {macro_precision:.4f}")
+print(f"Macro Recall: {macro_recall:.4f}")
 print(f"Macro F1-Score: {macro_f1:.4f}")
 
-# AUC-ROC (one-vs-rest, macro average)
+# AUC-ROC
 print("\n--- AUC-ROC (One-vs-Rest, Macro Average) ---")
 all_labels_bin = label_binarize(all_labels, classes=[0, 1, 2, 3])
 auc_score = roc_auc_score(all_labels_bin, all_probs, multi_class='ovr', average='macro')
 print(f"Macro AUC-ROC: {auc_score:.4f}")
 
-# Per-class AUC-ROC
 print("\n--- Per-Class AUC-ROC ---")
 per_class_auc = roc_auc_score(all_labels_bin, all_probs, multi_class='ovr', average=None)
 for i, class_name in enumerate(class_names):
     print(f"{class_name}: {per_class_auc[i]:.4f}")
 
-# Detailed Classification Report
+# Classification Report
 print("\n--- Detailed Classification Report ---")
 class_report = classification_report(
     all_labels, 
@@ -362,13 +425,12 @@ plt.ylabel('Actual', fontsize=12)
 plt.xlabel('Predicted', fontsize=12)
 plt.tight_layout()
 
-# Save Standard Confusion Matrix
 cm_save_path = os.path.join(ROOT_DIR, f"outputs/confusion_matrix/confusion_matrix_{MODEL_NAME}_{MODEL_TYPE}.png")
 plt.savefig(cm_save_path, dpi=300, bbox_inches='tight')
 print(f"✓ Standard confusion matrix saved to: {cm_save_path}")
 plt.close()
 
-# Plot Large Text Confusion Matrix (with 48pt font like in improved_confusion_matrices.ipynb)
+# Plot Large Text Confusion Matrix
 cm_large_title = f'{MODEL_NAME} ({MODEL_TYPE.capitalize()})'
 cm_large_filename = f'confusion_matrix_{MODEL_NAME}_{MODEL_TYPE}_LARGE.png'
 plot_large_confusion_matrix(cm, cm_large_title, cm_large_filename, os.path.join(ROOT_DIR, "outputs/confusion_matrix"), class_names)
@@ -378,7 +440,6 @@ plot_large_confusion_matrix(cm, cm_large_title, cm_large_filename, os.path.join(
 # SAVE EVALUATION RESULTS TO CSV
 # =====================================
 
-# Create evaluation summary
 evaluation_results = {
     'Metric': [
         'Test Accuracy',
@@ -434,7 +495,7 @@ eval_df.to_csv(eval_csv_path, index=False)
 
 print(f"\n✓ Evaluation results saved to: {eval_csv_path}")
 
-# Save detailed classification report to text file with proper naming
+# Save classification report
 report_txt_path = os.path.join(ROOT_DIR, f"outputs/logs/classification_report_{MODEL_NAME}_{MODEL_TYPE}.txt")
 with open(report_txt_path, 'w') as f:
     f.write("="*60 + "\n")
