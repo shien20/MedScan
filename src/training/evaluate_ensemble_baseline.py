@@ -211,18 +211,33 @@ print("\n" + "="*70)
 print(f"EVALUATION RESULTS - {label}")
 print("="*70)
 
-print(f"\nOverall Accuracy: {overall_accuracy:.4f}")
-print(f"Macro Precision:  {macro_precision:.4f}")
-print(f"Macro Recall:     {macro_recall:.4f}")
-print(f"Macro F1:         {macro_f1:.4f}")
-print(f"Macro AUC:        {macro_auc:.4f}")
+print(f"\nTest Accuracy: {overall_accuracy*100:.2f}%")
 
-print("\n" + "-"*70)
-print("Per-Class Metrics:")
-print("-"*70)
+print("\n--- Precision per Class ---")
 for i, class_name in enumerate(CLASS_NAMES):
-    print(f"{class_name:15} | Precision: {precision_per_class[i]:.4f} | "
-          f"Recall: {recall_per_class[i]:.4f} | F1: {f1_per_class[i]:.4f} | AUC: {per_class_auc[i]:.4f}")
+    print(f"  {class_name}: {precision_per_class[i]*100:.2f}%")
+print(f"  Macro Precision: {macro_precision*100:.2f}%")
+
+print("\n--- Recall per Class ---")
+for i, class_name in enumerate(CLASS_NAMES):
+    print(f"  {class_name}: {recall_per_class[i]*100:.2f}%")
+print(f"  Macro Recall: {macro_recall*100:.2f}%")
+
+print("\n--- F1-Score per Class ---")
+for i, class_name in enumerate(CLASS_NAMES):
+    print(f"  {class_name}: {f1_per_class[i]*100:.2f}%")
+print(f"  Macro F1: {macro_f1*100:.2f}%")
+
+print("\n--- AUC-ROC per Class ---")
+for i, class_name in enumerate(CLASS_NAMES):
+    print(f"  {class_name}: {per_class_auc[i]:.4f}")
+print(f"  Macro AUC-ROC: {macro_auc:.4f}")
+
+print("\n--- Classification Report ---")
+print(class_report)
+
+print("--- Confusion Matrix ---")
+print(cm)
 
 # Save confusion matrix as PNG
 plot_large_confusion_matrix(cm, f"Confusion Matrix - {label}", cm_filename)
@@ -230,14 +245,35 @@ plot_large_confusion_matrix(cm, f"Confusion Matrix - {label}", cm_filename)
 # Save classification report as text
 report_path = os.path.join(logs_output_path, report_filename)
 with open(report_path, "w") as f:
-    f.write(f"Classification Report - {label}\n")
+    f.write(f"EVALUATION RESULTS - {label}\n")
     f.write("="*70 + "\n\n")
-    f.write(f"Overall Accuracy: {overall_accuracy:.4f}\n")
-    f.write(f"Macro Precision:  {macro_precision:.4f}\n")
-    f.write(f"Macro Recall:     {macro_recall:.4f}\n")
-    f.write(f"Macro F1:         {macro_f1:.4f}\n")
-    f.write(f"Macro AUC:        {macro_auc:.4f}\n\n")
-    f.write(class_report)
+    f.write(f"Test Accuracy: {overall_accuracy*100:.2f}%\n\n")
+    
+    f.write("--- Precision per Class ---\n")
+    for i, class_name in enumerate(CLASS_NAMES):
+        f.write(f"  {class_name}: {precision_per_class[i]*100:.2f}%\n")
+    f.write(f"  Macro Precision: {macro_precision*100:.2f}%\n\n")
+    
+    f.write("--- Recall per Class ---\n")
+    for i, class_name in enumerate(CLASS_NAMES):
+        f.write(f"  {class_name}: {recall_per_class[i]*100:.2f}%\n")
+    f.write(f"  Macro Recall: {macro_recall*100:.2f}%\n\n")
+    
+    f.write("--- F1-Score per Class ---\n")
+    for i, class_name in enumerate(CLASS_NAMES):
+        f.write(f"  {class_name}: {f1_per_class[i]*100:.2f}%\n")
+    f.write(f"  Macro F1: {macro_f1*100:.2f}%\n\n")
+    
+    f.write("--- AUC-ROC per Class ---\n")
+    for i, class_name in enumerate(CLASS_NAMES):
+        f.write(f"  {class_name}: {per_class_auc[i]:.4f}\n")
+    f.write(f"  Macro AUC-ROC: {macro_auc:.4f}\n\n")
+    
+    f.write("--- Classification Report ---\n")
+    f.write(class_report + "\n")
+    
+    f.write("--- Confusion Matrix ---\n")
+    f.write(str(cm) + "\n")
 
 print(f"\n✓ Saved classification report: {report_path}")
 
