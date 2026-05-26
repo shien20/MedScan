@@ -4,6 +4,7 @@ Evaluates Heavy Baseline and Light Baseline ensemble models
 """
 
 import os
+import sys
 import numpy as np
 import pandas as pd
 import torch
@@ -18,6 +19,9 @@ from sklearn.metrics import (
 )
 from sklearn.preprocessing import label_binarize
 
+# Add project root to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 from src.datasets.chest_xray_dataset import ChestXrayDataset
 from src.datasets.transform import val_transform
 from src.models.ensemble import HeavyEnsemble, LightEnsemble
@@ -26,7 +30,7 @@ from src.models.ensemble import HeavyEnsemble, LightEnsemble
 # CONFIG
 # =====================================
 
-ENSEMBLE_TYPE = "heavy"   # Change to "light" for lightweight ensemble
+ENSEMBLE_TYPE = "light"   # Change to "light" for lightweight ensemble
 
 ROOT_DIR    = os.getcwd()
 device      = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -135,10 +139,17 @@ else:
     csv_filename   = "evaluation_light_ensemble_baseline.csv"
     report_filename = "classification_report_light_ensemble_baseline.txt"
 
-model.load_state_dict(torch.load(ensemble_path, map_location=device))
+# Load complete ensemble model state dict (includes backbones + classifier)
+try:
+    model.load_state_dict(torch.load(ensemble_path, map_location=device))
+    print(f"Complete ensemble model loaded from: {ensemble_path}")
+except FileNotFoundError:
+    print(f"Warning: Ensemble file not found at {ensemble_path}")
+    print("Using backbones only - classifier will have random weights")
+
 model = model.to(device)
 model.eval()
-print(f"Model loaded: {ensemble_path}")
+print(f"Ensemble ready for inference")
 
 
 # =====================================
