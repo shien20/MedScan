@@ -6,12 +6,12 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from torchvision import models
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from tqdm import tqdm
 
 from src.datasets.chest_xray_dataset import ChestXrayDataset
-from src.datasets.transform import train_transform, val_transform
+from src.datasets.transform import val_transform
 
 # =====================================
 # GET PROJECT ROOT DIRECTORY
@@ -50,27 +50,64 @@ print(f"Images dir path: {images_dir_path}")
 print(f"Train CSV exists: {os.path.exists(train_csv_path)}")
 print(f"Images dir exists: {os.path.exists(images_dir_path)}\n")
 
+# =====================================
+# WEIGHTED SAMPLER FUNCTION
+# =====================================
+def make_weighted_sampler(dataset):
+    """
+    Creates a sampler that reweights classes to be equally represented.
+    Minority classes appear MORE OFTEN in batches.
+    """
+    labels = dataset.df["label"].values
+    class_counts = torch.bincount(torch.tensor(labels, dtype=torch.long))
+    
+    # Weight = 1 / class_count
+    # Minority classes get higher weights
+    class_weights = 1.0 / class_counts.float()
+    
+    # Assign weight to each sample based on its class
+    sample_weights = class_weights[labels]
+    
+    return WeightedRandomSampler(
+        weights=sample_weights,
+        num_samples=len(sample_weights),
+        replacement=True
+    )
+
+# =====================================
+# TRAIN DATASET - Class-aware augmentation
+# =====================================
 train_dataset = ChestXrayDataset(
     csv_file=train_csv_path,
     image_dir=images_dir_path,
-    transform=train_transform
+    transform=None,      # Use class-aware logic inside dataset
+    is_train=True        # Enable minority/majority split
 )
 
+print(f"\nClass distribution in training set:")
+class_names = ["Normal", "Pneumonia", "COVID-19", "Tuberculosis"]
+for class_idx, class_name in enumerate(class_names):
+    count = (train_dataset.df["label"] == class_idx).sum()
+    print(f"  {class_name}: {count} images")
+
+# =====================================
+# VALIDATION DATASET - No augmentation
+# =====================================
 val_dataset = ChestXrayDataset(
     csv_file=val_csv_path,
     image_dir=images_dir_path,
-    transform=val_transform
+    transform=val_transform,
+    is_train=False
 )
-
 
 # =====================================
 # DATALOADERS
 # =====================================
-
 train_loader = DataLoader(
     train_dataset,
     batch_size=16,
-    shuffle=True
+    sampler=make_weighted_sampler(train_dataset),  # Use weighted sampler
+    shuffle=False  # Must be False when using sampler
 )
 
 val_loader = DataLoader(
