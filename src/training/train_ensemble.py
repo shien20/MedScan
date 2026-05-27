@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 
 from src.datasets.chest_xray_dataset import ChestXrayDataset
-from src.datasets.transform import train_transform, val_transform
+from src.datasets.transform import val_transform
 from src.models.ensemble import HeavyEnsemble, LightEnsemble
 
 # =====================================
@@ -43,8 +43,31 @@ train_csv  = os.path.join(ROOT_DIR, "data/processed/all_data/train.csv")
 val_csv    = os.path.join(ROOT_DIR, "data/processed/all_data/val.csv")
 images_dir = os.path.join(ROOT_DIR, "data/processed/all_data/Images")
 
-train_dataset = ChestXrayDataset(train_csv, images_dir, train_transform)
-val_dataset   = ChestXrayDataset(val_csv,   images_dir, val_transform)
+# =====================================
+# TRAIN DATASET - Class-aware augmentation
+# =====================================
+train_dataset = ChestXrayDataset(
+    csv_file=train_csv,
+    image_dir=images_dir,
+    transform=None,      # Use class-aware logic inside dataset
+    is_train=True        # Enable minority/majority split
+)
+
+print(f"\nClass distribution in training set:")
+class_names = ["Normal", "Pneumonia", "COVID-19", "Tuberculosis"]
+for class_idx, class_name in enumerate(class_names):
+    count = (train_dataset.df["label"] == class_idx).sum()
+    print(f"  {class_name}: {count} images")
+
+# =====================================
+# VALIDATION DATASET - No augmentation
+# =====================================
+val_dataset = ChestXrayDataset(
+    csv_file=val_csv,
+    image_dir=images_dir,
+    transform=val_transform,
+    is_train=False
+)
 
 # =====================================
 # WEIGHTED SAMPLER
