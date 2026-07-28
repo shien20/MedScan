@@ -4,6 +4,7 @@ data/
 Images/
 venv/
 outputs/
+notebooks/
 
 # Ignore processed data
 *.png
