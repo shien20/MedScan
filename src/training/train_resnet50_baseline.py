@@ -35,7 +35,7 @@ model = model.to(device)
 criterion = nn.CrossEntropyLoss()                # no label smoothing
 optimizer = optim.Adam(model.parameters(), lr=1e-4)  # train everything at once
 
-NUM_EPOCHS = 10
+NUM_EPOCHS = 15
 best_val_acc = 0.0
 metrics = []
 

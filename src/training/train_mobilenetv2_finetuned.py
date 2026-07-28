@@ -117,7 +117,7 @@ model = model.to(device)
 # LOSS FUNCTION (with label smoothing)
 # =====================================
 
-criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
 
 
 # =====================================
