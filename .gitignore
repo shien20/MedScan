@@ -1,6 +1,8 @@
 
 # Ignore dataset folders
-data/
+data/processed/
+data/raw/
+data/scripts/
 Images/
 venv/
 outputs/
